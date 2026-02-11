@@ -8,6 +8,7 @@ const net = require('net');
 const snmp = require('net-snmp');
 const { exec } = require('child_process');
 const logger = require('../utils/logger');
+const { DRIVER_DATABASE, THERMAL_DATABASE, GENERIC_DRIVERS } = require('./driverDatabase');
 
 // Common printer ports
 const PRINTER_PORTS = {
@@ -434,70 +435,178 @@ class DiscoveryService {
     }
 
     /**
-     * Get recommended CUPS driver for printer
+     * Get recommended CUPS driver for printer using driver database
      */
     async getRecommendedDriver(manufacturer, model, isThermal = false) {
-        // For thermal printers, use raw queue (direct ESC/POS)
-        if (isThermal || (manufacturer && manufacturer.type === 'thermal')) {
+        const mfrName = manufacturer?.name || manufacturer || '';
+        const modelStr = model || '';
+        const fullText = `${mfrName} ${modelStr}`.toLowerCase();
+        
+        // For thermal printers, always use raw queue
+        if (isThermal) {
             return {
                 driver: 'raw',
                 driverDisplay: 'Raw Queue (Direct ESC/POS)',
-                note: 'Thermal printers work best with raw queue for ESC/POS commands'
+                note: 'Thermal printers work best with raw queue for ESC/POS commands',
+                alternatives: ['lsb/usr/cupsfilters/textonly.ppd']
             };
         }
 
+        // Check if it's actually a thermal printer by name
+        for (const [key, data] of Object.entries(THERMAL_DATABASE)) {
+            if (fullText.includes(key) || fullText.includes(data.name.toLowerCase())) {
+                return {
+                    driver: 'raw',
+                    driverDisplay: `Raw Queue (${data.name} - ${data.protocol.toUpperCase()})`,
+                    note: `Thermal printer detected: ${data.name}`,
+                    alternatives: ['lsb/usr/cupsfilters/textonly.ppd']
+                };
+            }
+        }
+
+        // Find manufacturer in database
+        let mfrData = null;
+        for (const [key, data] of Object.entries(DRIVER_DATABASE)) {
+            if (fullText.includes(key)) {
+                mfrData = data;
+                break;
+            }
+            // Check aliases
+            if (data.aliases) {
+                for (const alias of data.aliases) {
+                    if (fullText.includes(alias.toLowerCase())) {
+                        mfrData = data;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // If manufacturer found, try to find best driver
+        if (mfrData) {
+            // Try model-specific search first
+            if (mfrData.models) {
+                for (const [modelPattern, modelConfig] of Object.entries(mfrData.models)) {
+                    if (fullText.includes(modelPattern.toLowerCase())) {
+                        // Found specific model
+                        const driverResult = await this.searchDriverOnSystem(modelConfig.search);
+                        if (driverResult) {
+                            return {
+                                driver: driverResult.driver,
+                                driverDisplay: driverResult.display,
+                                note: `Model-specific driver for ${mfrData.name} ${modelPattern}`,
+                                alternatives: mfrData.fallbackDrivers || []
+                            };
+                        }
+                    }
+                }
+            }
+
+            // Try manufacturer's preferred drivers
+            if (mfrData.preferredDrivers) {
+                for (const driverName of mfrData.preferredDrivers) {
+                    const driverResult = await this.searchDriverOnSystem([driverName, mfrData.name]);
+                    if (driverResult) {
+                        return {
+                            driver: driverResult.driver,
+                            driverDisplay: driverResult.display,
+                            note: `${mfrData.name} recommended driver`,
+                            alternatives: mfrData.fallbackDrivers || []
+                        };
+                    }
+                }
+            }
+
+            // Use manufacturer's generic driver if it has IPP support
+            if (mfrData.ippEverywhereSupport) {
+                return {
+                    driver: 'everywhere',
+                    driverDisplay: 'IPP Everywhere (Driverless)',
+                    note: `${mfrData.name} has excellent IPP Everywhere support`,
+                    alternatives: [mfrData.genericDriver, 'lsb/usr/cupsfilters/Generic-PDF_Printer-PDF.ppd']
+                };
+            }
+
+            // Return manufacturer's generic driver
+            if (mfrData.genericDriver) {
+                return {
+                    driver: mfrData.genericDriver,
+                    driverDisplay: `${mfrData.name} Generic Driver`,
+                    note: `Using ${mfrData.name} generic driver`,
+                    alternatives: mfrData.fallbackDrivers || []
+                };
+            }
+        }
+
+        // No manufacturer found - try generic search
+        const searchResult = await this.searchDriverOnSystem([mfrName, modelStr].filter(Boolean));
+        if (searchResult) {
+            return {
+                driver: searchResult.driver,
+                driverDisplay: searchResult.display,
+                note: 'Driver found by search',
+                alternatives: ['everywhere', 'lsb/usr/cupsfilters/Generic-PDF_Printer-PDF.ppd']
+            };
+        }
+
+        // Ultimate fallback: IPP Everywhere
+        return {
+            driver: 'everywhere',
+            driverDisplay: 'IPP Everywhere (Driverless)',
+            note: 'Using universal driverless printing',
+            alternatives: ['lsb/usr/cupsfilters/Generic-PDF_Printer-PDF.ppd', 'raw']
+        };
+    }
+
+    /**
+     * Search for a driver on the system
+     */
+    async searchDriverOnSystem(searchTerms) {
+        if (!searchTerms || searchTerms.length === 0) return null;
+
         return new Promise((resolve) => {
-            const searchTerm = model || manufacturer?.name || '';
+            // Build grep pattern for multiple terms
+            const grepTerms = searchTerms.filter(Boolean).join('\\|');
             
-            // Search for specific driver first
-            exec(`lpinfo -m 2>/dev/null | grep -i "${searchTerm}" | head -5`, 
+            exec(`lpinfo -m 2>/dev/null | grep -i "${grepTerms}" | head -10`, 
                 { timeout: 5000 },
                 (error, stdout) => {
-                    if (!error && stdout.trim()) {
-                        const lines = stdout.trim().split('\n');
-                        const driver = lines[0].split(' ')[0];
-                        resolve({
-                            driver: driver,
-                            driverDisplay: lines[0],
-                            alternatives: lines.slice(1).map(l => l.split(' ')[0]),
-                            note: 'Specific driver found'
-                        });
+                    if (error || !stdout.trim()) {
+                        resolve(null);
                         return;
                     }
 
-                    // Search by manufacturer
-                    if (manufacturer?.name) {
-                        exec(`lpinfo -m 2>/dev/null | grep -i "${manufacturer.name}" | head -5`, 
-                            { timeout: 5000 },
-                            (err2, stdout2) => {
-                                if (!err2 && stdout2.trim()) {
-                                    const lines = stdout2.trim().split('\n');
-                                    const driver = lines[0].split(' ')[0];
-                                    resolve({
-                                        driver: driver,
-                                        driverDisplay: lines[0],
-                                        alternatives: lines.slice(1).map(l => l.split(' ')[0]),
-                                        note: 'Manufacturer driver found'
-                                    });
-                                    return;
-                                }
-
-                                // Fallback to driverless (IPP Everywhere) or generic PDF
-                                resolve({
-                                    driver: 'driverless',
-                                    driverDisplay: 'IPP Everywhere (Driverless)',
-                                    alternatives: ['lsb/usr/cupsfilters/Generic-PDF_Printer-PDF.ppd'],
-                                    note: 'Using driverless printing (IPP Everywhere)'
-                                });
+                    const lines = stdout.trim().split('\n');
+                    
+                    // Score each driver
+                    const scored = lines.map(line => {
+                        const parts = line.split(/\s+/);
+                        const ppd = parts[0];
+                        const desc = parts.slice(1).join(' ');
+                        const lower = `${ppd} ${desc}`.toLowerCase();
+                        
+                        let score = 0;
+                        for (const term of searchTerms) {
+                            if (term && lower.includes(term.toLowerCase())) {
+                                score += 10;
                             }
-                        );
+                        }
+                        
+                        // Bonus for quality drivers
+                        if (ppd.includes('hplip')) score += 15;
+                        if (ppd.includes('gutenprint')) score += 10;
+                        if (ppd.includes('Postscript')) score += 8;
+                        if (ppd.includes('escpr')) score += 8;
+                        
+                        return { driver: ppd, display: line, score };
+                    });
+
+                    scored.sort((a, b) => b.score - a.score);
+                    
+                    if (scored.length > 0 && scored[0].score > 0) {
+                        resolve(scored[0]);
                     } else {
-                        resolve({
-                            driver: 'driverless',
-                            driverDisplay: 'IPP Everywhere (Driverless)',
-                            alternatives: ['lsb/usr/cupsfilters/Generic-PDF_Printer-PDF.ppd'],
-                            note: 'Using driverless printing (IPP Everywhere)'
-                        });
+                        resolve(null);
                     }
                 }
             );

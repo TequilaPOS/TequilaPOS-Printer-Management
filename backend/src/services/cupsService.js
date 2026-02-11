@@ -3,10 +3,18 @@
 // ===========================================
 
 const { execCommand, pingHost, sanitizeForShell, isValidIP } = require('../utils/shellExec');
+const { DRIVER_DATABASE, THERMAL_DATABASE, GENERIC_DRIVERS } = require('./driverDatabase');
 const logger = require('../utils/logger');
 
 class CupsService {
     
+    constructor() {
+        // Cache available drivers
+        this.availableDrivers = null;
+        this.driversCacheTime = 0;
+        this.CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+    }
+
     /**
      * Generate a CUPS-safe printer name from user input
      */
@@ -110,157 +118,249 @@ class CupsService {
 
     /**
      * Find the best driver for a printer based on manufacturer, model, and protocol
+     * Uses driver database + intelligent matching
      */
     async findBestDriver(manufacturer, model, protocol) {
-        const searchTerms = [];
+        const mfrLower = (manufacturer || '').toLowerCase();
+        const modelLower = (model || '').toLowerCase();
+        const fullText = `${mfrLower} ${modelLower}`;
         
-        // Build search terms from manufacturer and model
-        if (manufacturer) {
-            searchTerms.push(manufacturer.toLowerCase());
+        logger.info(`Finding driver for: manufacturer="${manufacturer}", model="${model}", protocol="${protocol}"`);
+
+        // Step 1: Check if it's a thermal printer
+        const thermalDriver = this.checkThermalPrinter(fullText);
+        if (thermalDriver) {
+            logger.info(`Thermal printer detected, using: ${thermalDriver}`);
+            return thermalDriver;
         }
-        if (model) {
-            // Extract key parts of model name
-            const modelParts = model.toLowerCase()
-                .replace(/[^a-z0-9\s]/g, ' ')
-                .split(/\s+/)
-                .filter(p => p.length > 2);
-            searchTerms.push(...modelParts);
-        }
+
+        // Step 2: Identify manufacturer from database
+        const mfrData = this.identifyManufacturer(fullText);
         
-        logger.info(`Searching drivers with terms: ${searchTerms.join(', ')}`);
+        // Step 3: Get available drivers on this system
+        const availableDrivers = await this.getAvailableDrivers();
         
-        // Get list of available drivers
-        try {
-            const { stdout } = await execCommand('lpinfo -m 2>/dev/null');
-            const drivers = stdout.split('\n').filter(l => l.trim());
-            
-            // Score each driver based on how well it matches
-            const scoredDrivers = [];
-            
-            for (const line of drivers) {
-                const parts = line.split(/\s+/);
-                const driverPath = parts[0];
-                const driverDesc = parts.slice(1).join(' ').toLowerCase();
-                const driverName = driverPath.toLowerCase();
-                
-                let score = 0;
-                let matchedTerms = [];
-                
-                for (const term of searchTerms) {
-                    if (driverDesc.includes(term) || driverName.includes(term)) {
-                        score += 10;
-                        matchedTerms.push(term);
-                        
-                        // Bonus for exact model match
-                        if (model && driverDesc.includes(model.toLowerCase().replace(/[^a-z0-9]/g, ''))) {
-                            score += 50;
-                        }
+        // Step 4: Try to find specific model driver
+        if (mfrData && mfrData.models) {
+            for (const [modelPattern, modelConfig] of Object.entries(mfrData.models)) {
+                if (modelLower.includes(modelPattern.toLowerCase())) {
+                    logger.info(`Model pattern matched: "${modelPattern}"`);
+                    
+                    // Search for this specific driver
+                    const foundDriver = await this.searchDriver(modelConfig.search, availableDrivers);
+                    if (foundDriver) {
+                        logger.info(`Found model-specific driver: ${foundDriver}`);
+                        return foundDriver;
                     }
                 }
-                
-                // Prefer certain driver types
-                if (driverPath.includes('postscript')) score += 5;
-                if (driverPath.includes('pcl')) score += 3;
-                if (driverPath.includes('pdf')) score += 2;
-                
-                // Penalize generic drivers slightly
-                if (driverPath === 'raw' || driverPath === 'everywhere') {
-                    score -= 5;
-                }
-                
-                if (score > 0) {
-                    scoredDrivers.push({ driver: driverPath, score, matches: matchedTerms });
-                }
             }
-            
-            // Sort by score descending
-            scoredDrivers.sort((a, b) => b.score - a.score);
-            
-            if (scoredDrivers.length > 0) {
-                logger.info(`Best driver match: ${scoredDrivers[0].driver} (score: ${scoredDrivers[0].score}, matches: ${scoredDrivers[0].matches.join(', ')})`);
-                return scoredDrivers[0].driver;
-            }
-            
-        } catch (error) {
-            logger.warn('Failed to search drivers:', error.message);
         }
-        
-        // Fallback driver selection based on protocol and manufacturer
-        return this.getFallbackDriver(manufacturer, protocol);
+
+        // Step 5: Try manufacturer's preferred drivers
+        if (mfrData && mfrData.preferredDrivers) {
+            for (const driverName of mfrData.preferredDrivers) {
+                const foundDriver = await this.searchDriver([driverName], availableDrivers);
+                if (foundDriver) {
+                    logger.info(`Found manufacturer preferred driver: ${foundDriver}`);
+                    return foundDriver;
+                }
+            }
+        }
+
+        // Step 6: Try manufacturer's fallback drivers
+        if (mfrData && mfrData.fallbackDrivers) {
+            for (const driverName of mfrData.fallbackDrivers) {
+                const foundDriver = await this.searchDriver([driverName], availableDrivers);
+                if (foundDriver) {
+                    logger.info(`Found manufacturer fallback driver: ${foundDriver}`);
+                    return foundDriver;
+                }
+            }
+        }
+
+        // Step 7: Use generic driver based on protocol
+        const genericDriver = this.getGenericDriver(protocol, mfrData);
+        logger.info(`Using generic driver: ${genericDriver}`);
+        return genericDriver;
     }
 
     /**
-     * Get fallback driver when no specific match is found
+     * Check if printer is thermal/POS and return appropriate driver
      */
-    getFallbackDriver(manufacturer, protocol) {
-        const manufacturerLower = (manufacturer || '').toLowerCase();
+    checkThermalPrinter(text) {
+        const lower = text.toLowerCase();
         
-        // THERMAL/POS PRINTERS - Always use raw queue for ESC/POS
-        const thermalBrands = ['epson tm', 'star', 'munbyn', 'snbc', 'posbank', 'pos bank', 
-                              'bematech', 'citizen', 'custom', 'rongta', 'xprinter', 'sewoo',
-                              'thermal', 'pos', 'receipt'];
+        // Check known thermal brands
+        for (const [brand, data] of Object.entries(THERMAL_DATABASE)) {
+            if (lower.includes(brand) || lower.includes(data.name.toLowerCase())) {
+                return 'raw';
+            }
+            // Check model patterns
+            for (const model of data.models) {
+                if (lower.includes(model.toLowerCase())) {
+                    return 'raw';
+                }
+            }
+        }
         
-        for (const brand of thermalBrands) {
-            if (manufacturerLower.includes(brand)) {
-                logger.info(`Thermal printer detected (${brand}), using raw driver`);
+        // Check thermal patterns
+        const thermalPatterns = [
+            /tm-[a-z]?\d+/i,  // Epson TM series
+            /tsp\d+/i,        // Star TSP series
+            /btp-[a-z]?\d+/i, // SNBC BTP series
+            /ct-[a-z]\d+/i,   // Citizen CT series
+            /receipt/i,
+            /thermal/i,
+            /pos.?printer/i,
+            /esc.?pos/i,
+        ];
+        
+        for (const pattern of thermalPatterns) {
+            if (pattern.test(lower)) {
                 return 'raw';
             }
         }
         
-        // Check for thermal printer model patterns
-        if (manufacturerLower.match(/tm-[a-z0-9]+/i) ||  // Epson TM series
-            manufacturerLower.match(/tsp[0-9]+/i) ||    // Star TSP series
-            manufacturerLower.match(/btp-[a-z0-9]+/i) || // SNBC BTP series
-            manufacturerLower.match(/ct-[a-z0-9]+/i)) {  // Citizen CT series
-            logger.info(`Thermal printer model pattern detected, using raw driver`);
-            return 'raw';
+        return null;
+    }
+
+    /**
+     * Identify manufacturer from text
+     */
+    identifyManufacturer(text) {
+        const lower = text.toLowerCase();
+        
+        for (const [key, data] of Object.entries(DRIVER_DATABASE)) {
+            // Check main name
+            if (lower.includes(key)) {
+                return data;
+            }
+            // Check aliases
+            if (data.aliases) {
+                for (const alias of data.aliases) {
+                    if (lower.includes(alias.toLowerCase())) {
+                        return data;
+                    }
+                }
+            }
         }
         
-        // For IPP connections, try IPP Everywhere first (driverless printing)
-        if (protocol === 'ipp' || protocol === 'ipps') {
+        return null;
+    }
+
+    /**
+     * Get available drivers on the system (cached)
+     */
+    async getAvailableDrivers() {
+        const now = Date.now();
+        
+        if (this.availableDrivers && (now - this.driversCacheTime) < this.CACHE_TTL) {
+            return this.availableDrivers;
+        }
+        
+        try {
+            const { stdout } = await execCommand('lpinfo -m 2>/dev/null');
+            const lines = stdout.split('\n').filter(l => l.trim());
+            
+            this.availableDrivers = lines.map(line => {
+                const parts = line.split(/\s+/);
+                const ppd = parts[0];
+                const description = parts.slice(1).join(' ');
+                return { ppd, description, lower: `${ppd} ${description}`.toLowerCase() };
+            });
+            
+            this.driversCacheTime = now;
+            logger.info(`Cached ${this.availableDrivers.length} available drivers`);
+            
+            return this.availableDrivers;
+        } catch (error) {
+            logger.warn('Failed to get available drivers:', error.message);
+            return [];
+        }
+    }
+
+    /**
+     * Search for a driver in available drivers
+     */
+    async searchDriver(searchTerms, availableDrivers) {
+        if (!searchTerms || searchTerms.length === 0) return null;
+        
+        // Score each driver
+        const scored = [];
+        
+        for (const driver of availableDrivers) {
+            let score = 0;
+            
+            for (const term of searchTerms) {
+                const termLower = term.toLowerCase();
+                
+                // Exact PPD match (highest priority)
+                if (driver.ppd.toLowerCase() === termLower) {
+                    score += 100;
+                }
+                // PPD contains term
+                else if (driver.ppd.toLowerCase().includes(termLower)) {
+                    score += 50;
+                }
+                // Description contains term
+                else if (driver.description.toLowerCase().includes(termLower)) {
+                    score += 30;
+                }
+            }
+            
+            // Bonus for known quality drivers
+            if (driver.ppd.includes('hplip')) score += 15;
+            if (driver.ppd.includes('gutenprint')) score += 10;
+            if (driver.ppd.includes('Postscript')) score += 8;
+            if (driver.ppd.includes('escpr')) score += 8;
+            if (driver.ppd.includes('brlaser')) score += 8;
+            if (driver.ppd.includes('splix')) score += 8;
+            
+            // Penalize generic/fallback
+            if (driver.ppd === 'raw') score -= 20;
+            if (driver.ppd === 'everywhere') score -= 10;
+            
+            if (score > 0) {
+                scored.push({ driver: driver.ppd, score, desc: driver.description });
+            }
+        }
+        
+        // Sort by score
+        scored.sort((a, b) => b.score - a.score);
+        
+        if (scored.length > 0) {
+            logger.debug(`Driver search results: ${scored.slice(0, 3).map(s => `${s.driver}(${s.score})`).join(', ')}`);
+            return scored[0].driver;
+        }
+        
+        return null;
+    }
+
+    /**
+     * Get generic driver based on protocol and manufacturer
+     */
+    getGenericDriver(protocol, mfrData) {
+        // If manufacturer has IPP Everywhere support and protocol is IPP
+        if (mfrData?.ippEverywhereSupport && (protocol === 'ipp' || protocol === 'ipps')) {
             return 'everywhere';
         }
         
-        // NETWORK PRINTERS - Try manufacturer-specific drivers
-        
-        // HP printers - use generic PDF driver or HPLIP
-        if (manufacturerLower.includes('hp') || manufacturerLower.includes('hewlett')) {
-            return 'lsb/usr/cupsfilters/Generic-PDF_Printer-PDF.ppd';
+        // Use generic driver from database if manufacturer known
+        if (mfrData?.genericDriver) {
+            return mfrData.genericDriver;
         }
         
-        // Brother printers
-        if (manufacturerLower.includes('brother')) {
-            return 'lsb/usr/cupsfilters/Generic-PDF_Printer-PDF.ppd';
-        }
-        
-        // Kyocera printers - prefer driverless
-        if (manufacturerLower.includes('kyocera')) {
-            return 'everywhere';
-        }
-        
-        // Canon printers
-        if (manufacturerLower.includes('canon')) {
-            return 'lsb/usr/cupsfilters/Generic-PDF_Printer-PDF.ppd';
-        }
-        
-        // Epson network printers (not thermal)
-        if (manufacturerLower.includes('epson')) {
-            return 'lsb/usr/cupsfilters/Generic-PDF_Printer-PDF.ppd';
-        }
-        
-        // Xerox, Ricoh, Lexmark - use generic PDF
-        if (manufacturerLower.includes('xerox') || 
-            manufacturerLower.includes('ricoh') || 
-            manufacturerLower.includes('lexmark')) {
-            return 'lsb/usr/cupsfilters/Generic-PDF_Printer-PDF.ppd';
-        }
-        
-        // Default: try driverless for socket connections, otherwise raw
-        if (protocol === 'socket') {
-            return 'everywhere';
-        }
-        
-        return 'raw';
+        // Protocol-based fallback
+        const protocolDrivers = GENERIC_DRIVERS[protocol] || GENERIC_DRIVERS.socket;
+        return protocolDrivers.primary;
+    }
+
+    /**
+     * Get fallback driver when no specific match is found (legacy compatibility)
+     */
+    getFallbackDriver(manufacturer, protocol) {
+        const mfrData = this.identifyManufacturer(manufacturer || '');
+        return this.getGenericDriver(protocol, mfrData);
     }
 
     /**

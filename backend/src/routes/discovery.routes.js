@@ -151,6 +151,75 @@ router.post('/scan-thermal', async (req, res, next) => {
 });
 
 /**
+ * POST /api/discovery/recommend-driver
+ * Get recommended driver for a printer based on manufacturer and model
+ */
+router.post('/recommend-driver', async (req, res, next) => {
+    try {
+        const { manufacturer, model, protocol = 'socket' } = req.body;
+        
+        if (!manufacturer && !model) {
+            return res.status(400).json({ error: 'Manufacturer or model required' });
+        }
+
+        // Use cupsService to find best driver
+        const cupsService = require('../services/cupsService');
+        const driver = await cupsService.findBestDriver(manufacturer, model, protocol);
+        
+        // Get driver info
+        const { DRIVER_DATABASE, THERMAL_DATABASE } = require('../services/driverDatabase');
+        
+        // Detect manufacturer
+        const mfrLower = (manufacturer || '').toLowerCase();
+        const modelLower = (model || '').toLowerCase();
+        const fullText = `${mfrLower} ${modelLower}`;
+        
+        let mfrInfo = null;
+        let isThermal = false;
+        
+        // Check thermal
+        for (const [key, data] of Object.entries(THERMAL_DATABASE)) {
+            if (fullText.includes(key) || fullText.includes(data.name.toLowerCase())) {
+                isThermal = true;
+                mfrInfo = { name: data.name, type: 'thermal' };
+                break;
+            }
+        }
+        
+        // Check network printers
+        if (!isThermal) {
+            for (const [key, data] of Object.entries(DRIVER_DATABASE)) {
+                if (fullText.includes(key)) {
+                    mfrInfo = { 
+                        name: data.name, 
+                        type: 'network',
+                        preferredDrivers: data.preferredDrivers,
+                        ippSupport: data.ippEverywhereSupport || false
+                    };
+                    break;
+                }
+            }
+        }
+
+        res.json({
+            recommended: {
+                driver,
+                protocol: isThermal ? 'socket' : protocol,
+                port: isThermal ? 9100 : (protocol === 'ipp' ? 631 : 9100),
+            },
+            manufacturer: mfrInfo,
+            isThermal,
+            alternatives: isThermal 
+                ? ['raw', 'lsb/usr/cupsfilters/textonly.ppd']
+                : ['everywhere', 'lsb/usr/cupsfilters/Generic-PDF_Printer-PDF.ppd']
+        });
+
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
  * GET /api/discovery/drivers
  * List available printer drivers
  */
