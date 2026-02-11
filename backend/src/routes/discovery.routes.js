@@ -335,9 +335,11 @@ router.post('/add', async (req, res, next) => {
             name,
             protocol = 'socket',
             port = 9100,
-            driver = 'raw',
+            driver,  // Optional - will auto-detect if not provided
             location = '',
-            description = ''
+            description = '',
+            forceThermal = false,  // Force thermal printer mode (raw driver)
+            printerType = 'auto'   // 'auto', 'thermal', 'network'
         } = req.body;
 
         if (!ip || !name) {
@@ -355,6 +357,30 @@ router.post('/add', async (req, res, next) => {
                 error: 'Printer already exists',
                 printer_id: existing.id
             });
+        }
+
+        // Determine if thermal printer
+        const { isThermalPrinter, getThermalPrinterInfo } = require('../services/driverDatabase');
+        const searchText = `${name} ${description}`.toLowerCase();
+        let isThermal = forceThermal || printerType === 'thermal' || isThermalPrinter(searchText);
+        let thermalInfo = getThermalPrinterInfo(searchText);
+        
+        // Determine final driver
+        let finalDriver = driver;
+        if (!finalDriver) {
+            if (isThermal) {
+                finalDriver = 'raw';
+            } else {
+                // Auto-detect driver
+                const cupsService = require('../services/cupsService');
+                finalDriver = await cupsService.findBestDriver(null, name, protocol);
+            }
+        }
+
+        // Force raw for thermal
+        if (isThermal && finalDriver !== 'raw') {
+            logger.info(`Forcing raw driver for thermal printer: ${name}`);
+            finalDriver = 'raw';
         }
 
         // Generate CUPS name
@@ -382,14 +408,16 @@ router.post('/add', async (req, res, next) => {
                 deviceUri = `socket://${ip}:${port}`;
         }
 
-        // Parse manufacturer from name/description BEFORE adding to CUPS
-        let manufacturer = null;
-        const searchText = (name + ' ' + description).toLowerCase();
-        const brands = ['hp', 'epson', 'canon', 'brother', 'xerox', 'ricoh', 'lexmark', 'samsung', 'kyocera'];
-        for (const brand of brands) {
-            if (searchText.includes(brand)) {
-                manufacturer = brand.charAt(0).toUpperCase() + brand.slice(1);
-                break;
+        // Parse manufacturer from name/description
+        let manufacturer = thermalInfo?.brand || null;
+        if (!manufacturer) {
+            const brands = ['hp', 'epson', 'canon', 'brother', 'xerox', 'ricoh', 'lexmark', 'samsung', 'kyocera',
+                          'star', 'munbyn', 'snbc', 'citizen', 'bixolon', 'zebra', 'honeywell', 'tsc'];
+            for (const brand of brands) {
+                if (searchText.includes(brand)) {
+                    manufacturer = brand.charAt(0).toUpperCase() + brand.slice(1);
+                    break;
+                }
             }
         }
 

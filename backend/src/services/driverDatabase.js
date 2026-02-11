@@ -277,77 +277,191 @@ const DRIVER_DATABASE = {
 const THERMAL_DATABASE = {
     epson: {
         name: 'Epson',
-        models: ['TM-T20', 'TM-T88', 'TM-U220', 'TM-T82', 'TM-M30', 'TM-P80', 'TM-T70'],
+        models: ['TM-T20', 'TM-T88', 'TM-U220', 'TM-T82', 'TM-M30', 'TM-P80', 'TM-T70', 'TM-L90', 'TM-H6000'],
         protocol: 'escpos',
         driver: 'raw',
     },
     star: {
         name: 'Star Micronics',
-        models: ['TSP100', 'TSP143', 'TSP650', 'TSP700', 'TSP800', 'mPOP', 'SM-L200', 'SP700'],
+        models: ['TSP100', 'TSP143', 'TSP650', 'TSP700', 'TSP800', 'mPOP', 'SM-L200', 'SP700', 'SP500', 'TSP654'],
         protocol: 'starline',
         driver: 'raw',
     },
     munbyn: {
         name: 'Munbyn',
-        models: ['ITPP047', 'ITPP941', 'ITPP068', 'POS-80', 'ITPP080'],
+        models: ['ITPP047', 'ITPP941', 'ITPP068', 'POS-80', 'ITPP080', 'ITPP130'],
         protocol: 'escpos',
         driver: 'raw',
     },
     snbc: {
         name: 'SNBC',
-        models: ['BTP-R880NP', 'BTP-R580', 'BTP-M300', 'BTP-2002NP'],
+        models: ['BTP-R880NP', 'BTP-R580', 'BTP-M300', 'BTP-2002NP', 'BTP-R990', 'BTP-S80'],
         protocol: 'escpos',
         driver: 'raw',
     },
     posbank: {
         name: 'POS Bank',
-        models: ['A7', 'A10', 'A11', 'APEXA-G'],
+        models: ['A7', 'A10', 'A11', 'APEXA-G', 'APEXA'],
         protocol: 'escpos',
         driver: 'raw',
     },
     bematech: {
         name: 'Bematech',
-        models: ['MP-4200', 'MP-100S', 'LR2000', 'MP-2800'],
+        models: ['MP-4200', 'MP-100S', 'LR2000', 'MP-2800', 'MP-4000', 'PP-100'],
         protocol: 'escpos',
         driver: 'raw',
     },
     citizen: {
         name: 'Citizen',
-        models: ['CT-S310', 'CT-S601', 'CT-S651', 'CT-S801', 'CT-S851'],
+        models: ['CT-S310', 'CT-S601', 'CT-S651', 'CT-S801', 'CT-S851', 'CT-E351', 'CL-S521'],
         protocol: 'escpos',
         driver: 'raw',
     },
     custom: {
         name: 'Custom',
-        models: ['TG2480', 'KUBE', 'Q3X', 'TL60', 'TL80'],
+        models: ['TG2480', 'KUBE', 'Q3X', 'TL60', 'TL80', 'VKP80'],
         protocol: 'escpos',
         driver: 'raw',
     },
     rongta: {
         name: 'Rongta',
-        models: ['RP80', 'RP326', 'RP400', 'RP58', 'RP325'],
+        models: ['RP80', 'RP326', 'RP400', 'RP58', 'RP325', 'RP330', 'ACE-V1'],
         protocol: 'escpos',
         driver: 'raw',
     },
     xprinter: {
         name: 'Xprinter',
-        models: ['XP-58', 'XP-80', 'XP-Q200', 'XP-N160', 'XP-370B'],
+        models: ['XP-58', 'XP-80', 'XP-Q200', 'XP-N160', 'XP-370B', 'XP-A160', 'XP-T80'],
         protocol: 'escpos',
         driver: 'raw',
     },
     sewoo: {
         name: 'Sewoo',
-        models: ['SLK-TS400', 'LK-P20', 'LK-P30', 'LK-T21', 'SLK-TE212'],
+        models: ['SLK-TS400', 'LK-P20', 'LK-P30', 'LK-T21', 'SLK-TE212', 'LK-T41'],
         protocol: 'escpos',
         driver: 'raw',
     },
     zebra: {
         name: 'Zebra',
-        models: ['ZD410', 'ZD420', 'ZD620', 'GK420', 'GC420'],
-        protocol: 'zpl', // Zebra uses ZPL, not ESC/POS
+        models: ['ZD410', 'ZD420', 'ZD620', 'GK420', 'GC420', 'ZT230', 'ZT410', 'ZQ520'],
+        protocol: 'zpl',
+        driver: 'raw',
+    },
+    // Additional thermal brands
+    hprt: {
+        name: 'HPRT',
+        models: ['TP805', 'TP806', 'TP808', 'PPT2', 'N41'],
+        protocol: 'escpos',
+        driver: 'raw',
+    },
+    goojprt: {
+        name: 'Goojprt',
+        models: ['JP58', 'JP80', 'MTP-3', 'MTP-II'],
+        protocol: 'escpos',
+        driver: 'raw',
+    },
+    posiflex: {
+        name: 'Posiflex',
+        models: ['PP-8000', 'PP-7000', 'AURA', 'PP-6900'],
+        protocol: 'escpos',
+        driver: 'raw',
+    },
+    bixolon: {
+        name: 'Bixolon',
+        models: ['SRP-350', 'SRP-330', 'SRP-275', 'SRP-380', 'SPP-R310'],
+        protocol: 'escpos',
+        driver: 'raw',
+    },
+    'sam4s': {
+        name: 'SAM4S',
+        models: ['ELLIX', 'GIANT-100', 'GCUBE'],
+        protocol: 'escpos',
+        driver: 'raw',
+    },
+    tsc: {
+        name: 'TSC',
+        models: ['TTP-244', 'TDP-225', 'TE200', 'TC200', 'DA210'],
+        protocol: 'tspl', // TSC uses TSPL
+        driver: 'raw',
+    },
+    honeywell: {
+        name: 'Honeywell',
+        models: ['PC42t', 'PC43', 'PM42', 'PD43', 'PX4i'],
+        protocol: 'dpl', // Honeywell uses DPL
+        driver: 'raw',
+    },
+    gainscha: {
+        name: 'Gainscha',
+        models: ['GP-80', 'GP-58', 'GS-2406T'],
+        protocol: 'escpos',
+        driver: 'raw',
+    },
+    sato: {
+        name: 'SATO',
+        models: ['CL4NX', 'CT4-LX', 'WS4', 'CG4'],
+        protocol: 'sbpl', // SATO uses SBPL
+        driver: 'raw',
+    },
+    godex: {
+        name: 'Godex',
+        models: ['G500', 'G530', 'RT700', 'EZ2050'],
+        protocol: 'ezpl', // Godex uses EZPL
+        driver: 'raw',
+    },
+    // Generic/Unknown thermal (catch-all patterns)
+    generic_thermal: {
+        name: 'Generic Thermal',
+        models: ['POS-', 'RECEIPT', 'THERMAL'],
+        protocol: 'escpos',
         driver: 'raw',
     },
 };
+
+/**
+ * Generic thermal detection patterns
+ * Used to identify thermal printers by naming patterns
+ */
+const THERMAL_DETECTION_PATTERNS = [
+    // Model patterns (regex)
+    /tm-[a-z]?\d+/i,       // Epson TM series
+    /tsp\d+/i,             // Star TSP series
+    /btp-[a-z]?\d+/i,      // SNBC BTP series
+    /ct-[a-z]\d+/i,        // Citizen CT series
+    /srp-\d+/i,            // Bixolon SRP series
+    /rp-?\d+/i,            // Rongta RP series
+    /xp-[a-z]?\d+/i,       // Xprinter XP series
+    /slk-[a-z]+\d+/i,      // Sewoo SLK series
+    /mp-\d+/i,             // Bematech MP series
+    /zd\d+/i,              // Zebra ZD series
+    /gk\d+/i,              // Zebra GK series
+    /pp-\d+/i,             // Posiflex PP series
+    /itpp\d+/i,            // Munbyn ITPP series
+    /lk-[a-z]?\d+/i,       // Sewoo LK series
+    /ttp-\d+/i,            // TSC TTP series
+    /gp-\d+/i,             // Gainscha GP series
+    
+    // Generic keywords
+    /receipt\s*printer/i,
+    /thermal\s*printer/i,
+    /pos\s*printer/i,
+    /ticket\s*printer/i,
+    /label\s*printer/i,
+    /barcode\s*printer/i,
+    /80mm/i,               // Common thermal width
+    /58mm/i,               // Common thermal width
+    /esc\/?pos/i,          // ESC/POS protocol mention
+    /direct\s*thermal/i,
+];
+
+/**
+ * Keywords that strongly indicate thermal printer
+ */
+const THERMAL_KEYWORDS = [
+    'thermal', 'receipt', 'pos', 'ticket', 'label', 'barcode',
+    'escpos', 'esc/pos', 'esc-pos', '80mm', '58mm', '76mm',
+    'direct thermal', 'dot matrix receipt', 'kitchen printer',
+    'cash drawer', 'point of sale', 'kiosk'
+];
 
 /**
  * Generic fallback drivers by printer type/protocol
@@ -408,8 +522,98 @@ const GENERIC_DRIVERS = {
     }
 };
 
+/**
+ * Check if text matches thermal printer patterns
+ * @param {string} text - Text to check (model, description, etc.)
+ * @returns {boolean}
+ */
+function isThermalPrinter(text) {
+    if (!text) return false;
+    const lower = text.toLowerCase();
+    
+    // Check keywords
+    for (const keyword of THERMAL_KEYWORDS) {
+        if (lower.includes(keyword)) {
+            return true;
+        }
+    }
+    
+    // Check regex patterns
+    for (const pattern of THERMAL_DETECTION_PATTERNS) {
+        if (pattern.test(text)) {
+            return true;
+        }
+    }
+    
+    // Check known thermal brands
+    for (const [brand, data] of Object.entries(THERMAL_DATABASE)) {
+        if (lower.includes(brand) || lower.includes(data.name.toLowerCase())) {
+            return true;
+        }
+        // Check model names
+        for (const model of data.models) {
+            if (lower.includes(model.toLowerCase())) {
+                return true;
+            }
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * Get thermal printer info if detected
+ * @param {string} text - Text to check
+ * @returns {object|null}
+ */
+function getThermalPrinterInfo(text) {
+    if (!text) return null;
+    const lower = text.toLowerCase();
+    
+    // Try to identify specific brand
+    for (const [brand, data] of Object.entries(THERMAL_DATABASE)) {
+        if (lower.includes(brand) || lower.includes(data.name.toLowerCase())) {
+            return {
+                brand: data.name,
+                protocol: data.protocol,
+                driver: 'raw',
+                detected: true
+            };
+        }
+        // Check model names
+        for (const model of data.models) {
+            if (lower.includes(model.toLowerCase())) {
+                return {
+                    brand: data.name,
+                    model: model,
+                    protocol: data.protocol,
+                    driver: 'raw',
+                    detected: true
+                };
+            }
+        }
+    }
+    
+    // Generic thermal detection
+    if (isThermalPrinter(text)) {
+        return {
+            brand: 'Unknown',
+            protocol: 'escpos',
+            driver: 'raw',
+            detected: true,
+            generic: true
+        };
+    }
+    
+    return null;
+}
+
 module.exports = {
     DRIVER_DATABASE,
     THERMAL_DATABASE,
+    THERMAL_DETECTION_PATTERNS,
+    THERMAL_KEYWORDS,
     GENERIC_DRIVERS,
+    isThermalPrinter,
+    getThermalPrinterInfo,
 };

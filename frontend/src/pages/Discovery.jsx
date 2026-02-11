@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Badge } from '../components/ui/badge'
+import { Label } from '../components/ui/label'
 import { 
   Search, 
   Wifi, 
@@ -19,7 +20,8 @@ import {
   Zap,
   AlertCircle,
   Receipt,
-  Thermometer
+  Thermometer,
+  HelpCircle
 } from 'lucide-react'
 import api from '../api/axios'
 
@@ -30,6 +32,14 @@ export default function Discovery() {
   const [scanType, setScanType] = useState('') // '', 'full', 'quick', 'thermal'
   const [scanResults, setScanResults] = useState([])
   const [selectedPrinters, setSelectedPrinters] = useState(new Set())
+  const [showManualAdd, setShowManualAdd] = useState(false)
+  const [manualPrinter, setManualPrinter] = useState({
+    ip: '',
+    name: '',
+    printerType: 'auto', // 'auto', 'thermal', 'network'
+    protocol: 'socket',
+    port: '9100'
+  })
   const pollInterval = useRef(null)
 
   // Get detected local network
@@ -135,15 +145,19 @@ export default function Discovery() {
   }
 
   // Add single printer
-  const addPrinter = async (printer) => {
+  const addPrinter = async (printer, forceThermal = false) => {
     try {
+      const isThermal = forceThermal || printer.isThermal || printer.printerType === 'thermal'
+      
       await api.post('/discovery/add', {
         ip: printer.ip,
         name: printer.recommended?.name || `Printer_${printer.ip}`,
         protocol: printer.recommended?.protocol || 'socket',
         port: printer.recommended?.port || 9100,
-        driver: printer.recommended?.driver || 'raw',
-        description: printer.info?.model || ''
+        driver: isThermal ? 'raw' : (printer.recommended?.driver || 'raw'),
+        description: printer.info?.model || '',
+        forceThermal: isThermal,
+        printerType: isThermal ? 'thermal' : 'auto'
       })
 
       toast.success(`Added ${printer.info?.model || printer.ip}`)
@@ -151,6 +165,35 @@ export default function Discovery() {
       
       // Remove from results
       setScanResults(prev => prev.filter(p => p.ip !== printer.ip))
+      
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to add printer')
+    }
+  }
+
+  // Add printer manually
+  const addManualPrinter = async () => {
+    if (!manualPrinter.ip || !manualPrinter.name) {
+      toast.error('IP and name are required')
+      return
+    }
+
+    try {
+      const isThermal = manualPrinter.printerType === 'thermal'
+      
+      await api.post('/discovery/add', {
+        ip: manualPrinter.ip,
+        name: manualPrinter.name,
+        protocol: manualPrinter.protocol,
+        port: parseInt(manualPrinter.port) || 9100,
+        forceThermal: isThermal,
+        printerType: manualPrinter.printerType
+      })
+
+      toast.success(`Added ${manualPrinter.name}`)
+      queryClient.invalidateQueries(['printers'])
+      setShowManualAdd(false)
+      setManualPrinter({ ip: '', name: '', printerType: 'auto', protocol: 'socket', port: '9100' })
       
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to add printer')
@@ -319,6 +362,15 @@ export default function Discovery() {
               <Receipt className="h-4 w-4 mr-2" />
               Scan Thermal/POS Printers
             </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setShowManualAdd(true)}
+              className="border-green-300 text-green-700 hover:bg-green-50"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Manually
+            </Button>
           </div>
 
           {scanning && (
@@ -437,14 +489,28 @@ export default function Discovery() {
                       </div>
                     </div>
 
-                    <Button 
-                      size="sm" 
-                      onClick={() => addPrinter(printer)}
-                      className={printer.isThermal ? 'bg-orange-600 hover:bg-orange-700' : ''}
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Add
-                    </Button>
+                    <div className="flex flex-col gap-2">
+                      <Button 
+                        size="sm" 
+                        onClick={() => addPrinter(printer)}
+                        className={printer.isThermal ? 'bg-orange-600 hover:bg-orange-700' : ''}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Add
+                      </Button>
+                      {!printer.isThermal && (
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => addPrinter(printer, true)}
+                          className="text-xs border-orange-300 text-orange-700 hover:bg-orange-50"
+                          title="Force thermal mode if auto-detection failed"
+                        >
+                          <Receipt className="h-3 w-3 mr-1" />
+                          As Thermal
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -480,13 +546,130 @@ export default function Discovery() {
           <ul className="text-sm text-muted-foreground space-y-2">
             <li>• <strong>Quick Scan</strong>: Scans common IP endings (1, 10, 20, 50, 100, etc.) - faster but may miss some printers</li>
             <li>• <strong>Full Scan</strong>: Scans all IPs in the range - thorough but slower</li>
+            <li>• <strong>Thermal/POS Scan</strong>: Optimized for receipt printers (port 9100 only)</li>
             <li>• <strong>CIDR notation</strong>: Use /24 for a typical 254-host network (e.g., 192.168.1.0/24)</li>
             <li>• <strong>Range notation</strong>: Use dashes for custom ranges (e.g., 192.168.1.1-50)</li>
             <li>• Printers are detected via ports 9100 (RAW), 631 (IPP), and 515 (LPD)</li>
-            <li>• SNMP is used to detect manufacturer, model, and serial number when available</li>
+            <li>• If a thermal printer is not detected correctly, use "Add Manually" and select "Thermal/POS"</li>
           </ul>
         </CardContent>
       </Card>
+
+      {/* Manual Add Modal */}
+      {showManualAdd && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-md mx-4">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Plus className="h-5 w-5" />
+                Add Printer Manually
+              </CardTitle>
+              <CardDescription>
+                Add a printer that wasn't auto-detected or force specific settings
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="manual-ip">IP Address *</Label>
+                <Input
+                  id="manual-ip"
+                  value={manualPrinter.ip}
+                  onChange={(e) => setManualPrinter(prev => ({ ...prev, ip: e.target.value }))}
+                  placeholder="192.168.1.100"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="manual-name">Printer Name *</Label>
+                <Input
+                  id="manual-name"
+                  value={manualPrinter.name}
+                  onChange={(e) => setManualPrinter(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="Kitchen Receipt Printer"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Printer Type</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  <Button
+                    type="button"
+                    variant={manualPrinter.printerType === 'auto' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setManualPrinter(prev => ({ ...prev, printerType: 'auto' }))}
+                    className="flex flex-col items-center py-3 h-auto"
+                  >
+                    <HelpCircle className="h-5 w-5 mb-1" />
+                    <span className="text-xs">Auto-Detect</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={manualPrinter.printerType === 'thermal' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setManualPrinter(prev => ({ ...prev, printerType: 'thermal', protocol: 'socket', port: '9100' }))}
+                    className={`flex flex-col items-center py-3 h-auto ${manualPrinter.printerType === 'thermal' ? 'bg-orange-600 hover:bg-orange-700' : 'border-orange-300 text-orange-700 hover:bg-orange-50'}`}
+                  >
+                    <Receipt className="h-5 w-5 mb-1" />
+                    <span className="text-xs">Thermal/POS</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={manualPrinter.printerType === 'network' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setManualPrinter(prev => ({ ...prev, printerType: 'network' }))}
+                    className="flex flex-col items-center py-3 h-auto"
+                  >
+                    <Printer className="h-5 w-5 mb-1" />
+                    <span className="text-xs">Network</span>
+                  </Button>
+                </div>
+                {manualPrinter.printerType === 'thermal' && (
+                  <p className="text-xs text-orange-600 mt-1">
+                    ⚡ Thermal printers use RAW driver for ESC/POS commands
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="manual-protocol">Protocol</Label>
+                  <select
+                    id="manual-protocol"
+                    value={manualPrinter.protocol}
+                    onChange={(e) => setManualPrinter(prev => ({ ...prev, protocol: e.target.value }))}
+                    className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    disabled={manualPrinter.printerType === 'thermal'}
+                  >
+                    <option value="socket">Socket (9100)</option>
+                    <option value="ipp">IPP (631)</option>
+                    <option value="lpd">LPD (515)</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="manual-port">Port</Label>
+                  <Input
+                    id="manual-port"
+                    value={manualPrinter.port}
+                    onChange={(e) => setManualPrinter(prev => ({ ...prev, port: e.target.value }))}
+                    placeholder="9100"
+                    disabled={manualPrinter.printerType === 'thermal'}
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <Button variant="outline" onClick={() => setShowManualAdd(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={addManualPrinter}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Printer
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }
