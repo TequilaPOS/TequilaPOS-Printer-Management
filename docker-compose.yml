@@ -1,0 +1,142 @@
+services:
+  # ===========================================
+  # MySQL Database
+  # ===========================================
+  mysql:
+    image: mysql:8.0
+    container_name: printer-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: ${TZ:-America/Bogota}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "3306:3306"
+    networks:
+      - printer-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  # ===========================================
+  # Backend Node.js API + CUPS Server
+  # ===========================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        DRIVER_SET: ${DRIVER_SET:-lite}
+    container_name: printer-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DATABASE}
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      FRONTEND_URL: ${FRONTEND_URL}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      TZ: ${TZ:-America/Bogota}
+    volumes:
+      - ./backend/logs:/app/logs
+      - cups_data:/etc/cups
+      - cups_spool:/var/spool/cups
+    ports:
+      - "3000:3000"
+      - "631:631"
+    networks:
+      - printer-network
+    # Para acceder a redes externas (VPN) en macOS Docker Desktop
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/system/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ===========================================
+  # Frontend React (built with Nginx)
+  # ===========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api}
+    container_name: printer-frontend
+    restart: unless-stopped
+    networks:
+      - printer-network
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ===========================================
+  # Nginx Reverse Proxy with SSL
+  # ===========================================
+  nginx:
+    image: nginx:alpine
+    container_name: printer-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/logs:/var/log/nginx
+    networks:
+      - printer-network
+    depends_on:
+      - frontend
+      - backend
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# ===========================================
+# Networks
+# ===========================================
+networks:
+  printer-network:
+    driver: bridge
+
+# ===========================================
+# Volumes
+# ===========================================
+volumes:
+  mysql_data:
+    driver: local
+  cups_data:
+    driver: local
+  cups_spool:
+    driver: local

@@ -1,0 +1,27 @@
+# ===========================================
+# Development Override
+# ===========================================
+# This file is automatically loaded by docker-compose
+# and overrides settings for faster development.
+#
+# For production, rename or delete this file.
+# ===========================================
+
+services:
+  # Backend: mount source code for hot changes (no rebuild needed)
+  backend:
+    volumes:
+      - ./backend/src:/app/src:ro
+    environment:
+      NODE_ENV: development
+
+  # Frontend: For quick JS changes, build locally and copy
+  # Or use the helper script: ./dev.sh frontend
+  frontend:
+    # If you want live development with Vite:
+    # 1. Stop the frontend container: docker-compose stop frontend
+    # 2. Run locally: cd frontend && npm run dev
+    # 3. Access at http://localhost:5173 (proxies API to backend)
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
