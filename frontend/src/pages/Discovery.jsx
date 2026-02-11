@@ -471,28 +471,14 @@ export default function Discovery() {
                       </div>
                     </div>
 
-                    <div className="flex flex-col gap-2">
-                      <Button 
-                        size="sm" 
-                        onClick={() => addPrinter(printer)}
-                        className={printer.isThermal ? 'bg-orange-600 hover:bg-orange-700' : ''}
-                      >
-                        <Plus className="h-4 w-4 mr-1" />
-                        Add
-                      </Button>
-                      {!printer.isThermal && (
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => addPrinter(printer, true)}
-                          className="text-xs border-orange-300 text-orange-700 hover:bg-orange-50"
-                          title="Force thermal mode if auto-detection failed"
-                        >
-                          <Receipt className="h-3 w-3 mr-1" />
-                          As Thermal
-                        </Button>
-                      )}
-                    </div>
+                    <Button 
+                      size="sm" 
+                      onClick={() => addPrinter(printer)}
+                      className={printer.isThermal ? 'bg-orange-600 hover:bg-orange-700' : ''}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add
+                    </Button>
                   </div>
                 </div>
               ))}
