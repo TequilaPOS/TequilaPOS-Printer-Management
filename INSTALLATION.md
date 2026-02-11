@@ -277,7 +277,7 @@ Place your certificates in:
 | Field | Value |
 |-------|-------|
 | URL | `https://your-server-ip` |
-| Email | `admin@printer.local` |
+| Email/Username | `admin` |
 | Password | `admin123` |
 
 ⚠️ **IMPORTANT:** Change the default password immediately after first login!

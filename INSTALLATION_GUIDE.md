@@ -151,7 +151,7 @@ docker exec printer-backend lpstat -r
 
 1. Open browser: `http://YOUR_SERVER_IP`
 2. Login with default credentials:
-   - **Email:** `admin@printermanager.local`
+   - **Username:** `admin`
    - **Password:** `admin123`
 3. **IMPORTANT:** Change the admin password immediately in Settings
 

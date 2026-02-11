@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { printersAPI, reportsAPI, jobsAPI } from '../api/axios'
@@ -17,12 +18,16 @@ import {
   Droplets,
   FileStack,
   Hash,
-  RefreshCw
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react'
 import { getStatusColor, formatDate } from '../lib/utils'
 
 export default function PrinterDetail() {
   const { id } = useParams()
+  const [jobsPage, setJobsPage] = useState(1)
+  const JOBS_PER_PAGE = 10
 
   const { data: printer, isLoading } = useQuery({
     queryKey: ['printer', id],
@@ -187,14 +192,16 @@ export default function PrinterDetail() {
               </div>
               
               {/* Toner/Supplies */}
-              {snmpData.snmp.supplies?.length > 0 && (
+              {snmpData.snmp.supplies?.filter(s => s.percent >= 0 || s.status === 'ok' || s.status === 'low' || s.status === 'empty').length > 0 && (
                 <div>
                   <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
                     <Droplets className="h-4 w-4" />
                     Supplies / Toner
                   </h4>
                   <div className="space-y-3">
-                    {snmpData.snmp.supplies.map((supply, idx) => (
+                    {snmpData.snmp.supplies
+                      .filter(s => s.percent >= 0 || s.status === 'ok' || s.status === 'low' || s.status === 'empty')
+                      .map((supply, idx) => (
                       <div key={idx} className="space-y-1">
                         <div className="flex justify-between text-sm">
                           <span className="flex items-center gap-2">
@@ -289,24 +296,54 @@ export default function PrinterDetail() {
         </CardHeader>
         <CardContent>
           {printer.recentJobs?.length > 0 ? (
-            <div className="space-y-2">
-              {printer.recentJobs.map((job) => (
-                <div key={job.id} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <FileText className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="font-medium">{job.document_name || 'Unknown document'}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {job.pages || 0} pages • {formatDate(job.submitted_at)}
-                      </p>
+            <>
+              <div className="space-y-2">
+                {printer.recentJobs
+                  .slice((jobsPage - 1) * JOBS_PER_PAGE, jobsPage * JOBS_PER_PAGE)
+                  .map((job) => (
+                  <div key={job.id} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      <div>
+                        <p className="font-medium">{job.document_name || 'Unknown document'}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {job.pages || 0} pages • {formatDate(job.submitted_at)}
+                        </p>
+                      </div>
                     </div>
+                    <Badge className={getStatusColor(job.status)}>
+                      {job.status}
+                    </Badge>
                   </div>
-                  <Badge className={getStatusColor(job.status)}>
-                    {job.status}
-                  </Badge>
+                ))}
+              </div>
+              {/* Pagination */}
+              {printer.recentJobs.length > JOBS_PER_PAGE && (
+                <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                  <span className="text-sm text-muted-foreground">
+                    Showing {((jobsPage - 1) * JOBS_PER_PAGE) + 1}-{Math.min(jobsPage * JOBS_PER_PAGE, printer.recentJobs.length)} of {printer.recentJobs.length}
+                  </span>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => setJobsPage(p => Math.max(1, p - 1))}
+                      disabled={jobsPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => setJobsPage(p => p + 1)}
+                      disabled={jobsPage * JOBS_PER_PAGE >= printer.recentJobs.length}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           ) : (
             <p className="text-muted-foreground text-center py-4">No recent jobs</p>
           )}

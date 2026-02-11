@@ -67,7 +67,7 @@ docker-compose up -d
 
 ### Default credentials
 
-- **Admin**: admin@example.com / admin123
+- **Admin**: admin / admin123
 - **Operator**: operator@example.com / operator123
 
 ## 🖨️ Supported Printers
