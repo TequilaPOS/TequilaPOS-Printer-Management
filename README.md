@@ -84,7 +84,15 @@ docker-compose up -d
 | Brand | Models | Protocol |
 |-------|--------|----------|
 | EPSON | TM-T20, TM-T88, TM-U220 | ESC/POS |
-| STAR | TSP100, TSP650, TSP700 | StarLine |
+| STAR | TSP100, TSP143, TSP650, TSP700 | StarLine |
+| BIXOLON | SRP-E300, SRP-350, SRP-330 | ESC/POS |
+| MUNBYN | ITPP047, ITPP047P, ITPP068 | ESC/POS |
+| SNBC | BTP-R180, BTP-R880 | ESC/POS |
+| POSBANK | A11 PRIME, A11 | ESC/POS |
+| BLOGIC | S11 | ESC/POS |
+| Touch Dynamic | SLK-T21EB | ESC/POS |
+| KwickPOS | CP-80260K | ESC/POS |
+| Maple Touch | RP80II | ESC/POS |
 | CUSTOM | TG2480, KUBE | ESC/POS |
 | BEMATECH | MP-4200, MP-100S | ESC/POS |
 | Rongta | RP80, RP326 | ESC/POS |

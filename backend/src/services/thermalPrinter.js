@@ -2,7 +2,7 @@
 // Thermal Printer Service - Direct Printing Support
 // ===========================================
 // Based on patterns from node-thermal-printer and escpos
-// Supports: EPSON, STAR, CUSTOM, BEMATECH, DARUMA, BROTHER
+// Supports: EPSON, STAR, BIXOLON, MUNBYN, SNBC, POSBANK, BLOGIC, and ESC/POS compatible
 
 const net = require('net');
 const logger = require('../utils/logger');
@@ -17,13 +17,24 @@ class ThermalPrinterService {
     constructor() {
         // Printer types with their specific command sets
         this.printerTypes = {
-            EPSON: 'epson',
-            STAR: 'star',
+            EPSON: 'epson',        // TM-T20, TM-U220, TM-T88
+            STAR: 'star',          // TSP100, TSP650, TSP143
+            BIXOLON: 'bixolon',    // SRP-E300, SRP-350
+            MUNBYN: 'munbyn',      // ITPP068, ITPP047 (ESC/POS compatible)
+            SNBC: 'snbc',          // BTP-R180 (ESC/POS compatible)
+            POSBANK: 'posbank',    // A11 PRIME (ESC/POS compatible)
+            BLOGIC: 'blogic',      // S11 (ESC/POS compatible)
             CUSTOM: 'custom',
             BEMATECH: 'bematech',
             DARUMA: 'daruma',
             BROTHER: 'brother'
         };
+        
+        // Brands that use standard ESC/POS (EPSON compatible)
+        this.escposCompatible = [
+            'epson', 'munbyn', 'snbc', 'posbank', 'blogic', 
+            'bixolon', 'custom', 'bematech', 'kwickpos', 'mapletouch'
+        ];
         
         // Connection interfaces
         this.interfaces = {
