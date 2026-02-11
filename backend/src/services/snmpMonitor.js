@@ -202,6 +202,7 @@ class SNMPMonitor {
      * Handles formats: 
      *   SNMPv2-SMI::mib-2.43.11.1.1.6.1.1 = STRING: "Cartucho negro"
      *   .1.3.6.1.2.1.43.11.1.1.6.1.1 = STRING: "Cartucho negro"
+     *   iso.3.6.1.2.1.43.11.1.1.6.1.1 = STRING: "TK-1175"
      */
     parseSnmpWalkOutput(output) {
         if (!output) return [];
@@ -210,8 +211,8 @@ class SNMPMonitor {
         const lines = output.split('\n').filter(l => l.trim());
         
         for (const line of lines) {
-            // Match OID in various formats: .1.3.6..., SNMPv2-SMI::mib-2.43..., etc.
-            const oidMatch = line.match(/(?:SNMPv2-[\w-]+::|ISO::|^)(?:mib-2\.)?([.\d]+)\s*=/i) || line.match(/^([.\d]+)\s*=/);
+            // Match OID in various formats: .1.3.6..., SNMPv2-SMI::mib-2.43..., iso.3.6..., etc.
+            const oidMatch = line.match(/(?:SNMPv2-[\w-]+::|ISO::|iso\.|^)(?:mib-2\.)?([.\d]+)\s*=/i) || line.match(/^([.\d]+)\s*=/);
             const valueMatch = line.match(/=\s*(?:(\w+):\s*)?(.+)$/);
             
             if (oidMatch && valueMatch) {
