@@ -698,12 +698,20 @@ class DiscoveryService {
 
         // If we have 9100 but still no info, mark as potential printer
         if (has9100 && !result.isPrinter) {
+            // Only port 9100 open = likely thermal printer (cheap ones with no SNMP/web)
+            const onlyPort9100 = has9100 && !has631 && !has515 && !has80;
+            
             result.isPrinter = true;
-            result.printerType = has631 || has515 ? 'network' : 'thermal';
-            result.isThermal = result.printerType === 'thermal';
-            result.info.description = result.isThermal 
-                ? 'Thermal/POS Printer (Port 9100)' 
-                : 'Network Printer (JetDirect)';
+            result.printerType = onlyPort9100 ? 'thermal' : 'network';
+            result.isThermal = onlyPort9100;
+            
+            if (onlyPort9100) {
+                result.info.description = 'Thermal/POS Printer (ESC/POS)';
+                result.info.model = 'Generic Thermal Printer';
+                result.info.protocol = 'escpos';
+            } else {
+                result.info.description = 'Network Printer (JetDirect)';
+            }
         }
 
         if (!result.isPrinter) {
