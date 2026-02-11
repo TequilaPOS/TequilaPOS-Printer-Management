@@ -359,13 +359,15 @@ router.delete('/:id', requireRole(['admin']), async (req, res, next) => {
             // Continue anyway - we still want to remove from database
         }
         
+        // Log BEFORE deleting (don't pass printerId since it will be deleted)
+        await logAction('printer', 'Printer deleted', { 
+            deletedPrinterId: req.params.id, 
+            name: printer.name,
+            ip: printer.ip_address
+        }, req);
+        
         // Delete from database (cascade will handle related records)
         await db.update('DELETE FROM printers WHERE id = ?', [req.params.id]);
-        
-        await logAction('printer', 'Printer deleted', { 
-            printerId: req.params.id, 
-            name: printer.name 
-        }, req);
         
         // Emit real-time event
         const io = req.app.get('io');
