@@ -451,6 +451,7 @@ router.post('/add', async (req, res, next) => {
 
         // Add to database
         const printerTypeValue = isThermal ? 'thermal' : 'network';
+        const snmpEnabled = isThermal ? 0 : 1; // Enable SNMP by default for network printers
         const result = await db.query(`
             INSERT INTO printers (
                 name, ip_address, port, protocol, printer_type, cups_name, 
@@ -468,7 +469,7 @@ router.post('/add', async (req, res, next) => {
             name, // Use name as model for now
             location,
             description,
-            !isThermal, // thermal printers typically don't have SNMP
+            snmpEnabled,
             req.user.id
         ]);
 
