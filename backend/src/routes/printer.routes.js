@@ -351,8 +351,13 @@ router.delete('/:id', requireRole(['admin']), async (req, res, next) => {
             return res.status(404).json({ error: 'Printer not found' });
         }
         
-        // Remove from CUPS
-        await cupsService.deletePrinter(printer.cups_name);
+        // Remove from CUPS (ignore errors if printer doesn't exist in CUPS)
+        try {
+            await cupsService.deletePrinter(printer.cups_name);
+        } catch (cupsError) {
+            logger.warn(`CUPS delete failed for ${printer.cups_name}: ${cupsError.message}`);
+            // Continue anyway - we still want to remove from database
+        }
         
         // Delete from database (cascade will handle related records)
         await db.update('DELETE FROM printers WHERE id = ?', [req.params.id]);

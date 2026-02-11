@@ -32,8 +32,9 @@ export default function PrinterCard({ printer, onTest, onToggle, onSetDefault, o
   const getSnmpBadgeClass = () => {
     if (!printer.snmp_enabled) return 'bg-gray-100 text-gray-500'
     if (isOffline) return 'bg-red-100 text-red-700'
-    if (printer.toner_level !== null && printer.toner_level <= 10) return 'bg-orange-100 text-orange-700'
-    if (printer.toner_level !== null && printer.toner_level <= 20) return 'bg-yellow-100 text-yellow-700'
+    // toner_level: -1 means unknown/not available, treat as OK
+    if (printer.toner_level !== null && printer.toner_level >= 0 && printer.toner_level <= 10) return 'bg-orange-100 text-orange-700'
+    if (printer.toner_level !== null && printer.toner_level >= 0 && printer.toner_level <= 20) return 'bg-yellow-100 text-yellow-700'
     return 'bg-green-100 text-green-700'
   }
   
