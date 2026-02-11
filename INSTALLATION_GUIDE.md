@@ -104,7 +104,10 @@ JWT_SECRET=your-very-long-and-secure-jwt-secret-key-change-this
 JWT_EXPIRES_IN=24h
 PORT=3000
 
-# Backend Driver Pack (lite/common/full)
+# Backend Driver Pack:
+# - lite (default, ~500MB): HP, Kyocera, Epson, Brother (IPP Everywhere)
+# - common (~1.5GB): + Canon, Ricoh, Lexmark, Samsung drivers
+# - full (~3GB): All CUPS drivers for legacy printers
 DRIVER_SET=lite
 
 # Frontend
@@ -117,6 +120,9 @@ EOF
 # Secure the file
 chmod 600 .env
 ```
+
+> **Note about DRIVER_SET:** Start with `lite` - it works with 90% of modern network printers. 
+> Only change to `common` or `full` if specific printers don't work.
 
 ### Step 4: Build and Start Containers
 

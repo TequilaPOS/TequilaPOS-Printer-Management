@@ -5,6 +5,7 @@ Complete printer management system with CUPS support, ESC/POS thermal printers, 
 ## ✨ Features
 
 - **Printer Management**: Add, configure, and monitor printers via CUPS
+- **SNMP Monitoring**: Real-time toner levels, page counts, and printer status via SNMP
 - **Direct Print**: Support for thermal printers (EPSON, STAR, etc.) via TCP/IP
 - **WebSockets**: Real-time updates for printer status and jobs
 - **Dashboard**: Modern interface with React, Tailwind CSS, and Radix UI components
@@ -207,6 +208,12 @@ The system includes:
 1. Verify it's on the same network
 2. Check port (9100 for thermal, 631 for IPP)
 3. Verify firewall settings
+
+### SNMP not showing toner levels
+1. Verify printer supports SNMP (most HP, Kyocera, Epson do)
+2. Check SNMP community string (default: `public`)
+3. Test manually: `snmpwalk -v2c -c public PRINTER_IP .1.3.6.1.2.1.43.11.1.1.9`
+4. Enable SNMP in printer's web interface if needed
 
 ### CUPS error
 ```bash

@@ -165,6 +165,12 @@ JWT_REFRESH_SECRET=YourRefreshTokenSecret2024!
 
 # URLs
 FRONTEND_URL=https://your-domain.com
+
+# Driver pack: lite (default), common, or full
+DRIVER_SET=lite
+
+# Timezone
+TZ=America/Bogota
 ```
 
 ### Step 3: Build and Start
@@ -217,6 +223,33 @@ curl -k https://localhost/api/system/health
 | `JWT_SECRET` | - | JWT signing key |
 | `JWT_EXPIRY` | 7d | Token expiration |
 | `FRONTEND_URL` | https://localhost | Frontend URL for CORS |
+| `DRIVER_SET` | lite | Printer driver pack (see below) |
+| `TZ` | America/Bogota | Timezone for logs/dates |
+
+### Driver Packs (DRIVER_SET)
+
+The `DRIVER_SET` variable controls which printer drivers are installed in the backend container:
+
+| Value | Size | Printers Supported | Use Case |
+|-------|------|-------------------|----------|
+| `lite` | ~500MB | HP, Kyocera, Epson, Brother (IPP) | Most network printers with IPP Everywhere |
+| `common` | ~1.5GB | + Canon, Ricoh, Lexmark, Samsung | Older printers needing specific drivers |
+| `full` | ~3GB | + All CUPS drivers | Legacy printers, special models |
+
+**Recommendation:**
+- Start with `lite` (default) - works with 90% of modern printers
+- Use `common` if you have Canon/Ricoh printers
+- Use `full` only if specific printers don't work
+
+To change driver pack:
+```bash
+# Edit .env
+DRIVER_SET=common
+
+# Rebuild backend
+docker compose build backend
+docker compose up -d backend
+```
 
 ### Docker Compose Override
 
