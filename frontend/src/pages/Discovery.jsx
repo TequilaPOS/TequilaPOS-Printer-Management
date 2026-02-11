@@ -334,33 +334,18 @@ export default function Discovery() {
                 Stop Scan
               </Button>
             ) : (
-              <>
-                <Button onClick={() => startScan('quick')} variant="outline">
-                  <Zap className="h-4 w-4 mr-2" />
-                  Quick Scan
-                </Button>
-                <Button onClick={() => startScan('full')}>
-                  <Search className="h-4 w-4 mr-2" />
-                  Full Scan
-                </Button>
-              </>
+              <Button onClick={() => startScan('full')} size="lg">
+                <Search className="h-5 w-5 mr-2" />
+                Scan Network
+              </Button>
             )}
           </div>
 
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap items-center">
+            <span className="text-sm text-muted-foreground">Options:</span>
             <Button variant="ghost" size="sm" onClick={scanSingleIP}>
               <Wifi className="h-4 w-4 mr-2" />
               Scan Single IP
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => startScan('thermal')}
-              disabled={scanning}
-              className="border-orange-300 text-orange-700 hover:bg-orange-50"
-            >
-              <Receipt className="h-4 w-4 mr-2" />
-              Scan Thermal/POS Printers
             </Button>
             <Button 
               variant="outline" 
@@ -374,22 +359,19 @@ export default function Discovery() {
           </div>
 
           {scanning && (
-            <div className={`flex items-center gap-3 p-4 rounded-lg ${
-              scanType === 'thermal' ? 'bg-orange-50' : 'bg-blue-50'
-            }`}>
-              <RefreshCw className={`h-5 w-5 animate-spin ${
-                scanType === 'thermal' ? 'text-orange-600' : 'text-blue-600'
-              }`} />
+            <div className="flex items-center gap-3 p-4 rounded-lg bg-blue-50">
+              <RefreshCw className="h-5 w-5 animate-spin text-blue-600" />
               <div>
-                <p className={`font-medium ${
-                  scanType === 'thermal' ? 'text-orange-900' : 'text-blue-900'
-                }`}>
-                  {scanType === 'thermal' ? 'Scanning for thermal printers...' : 'Scanning network...'}
+                <p className="font-medium text-blue-900">
+                  Scanning network for all printers...
                 </p>
-                <p className={`text-sm ${
-                  scanType === 'thermal' ? 'text-orange-700' : 'text-blue-700'
-                }`}>
-                  Found {scanResults.length} printers so far
+                <p className="text-sm text-blue-700">
+                  Found {scanResults.length} printer{scanResults.length !== 1 ? 's' : ''} so far
+                  {scanResults.filter(p => p.isThermal).length > 0 && (
+                    <span className="ml-2 text-orange-600">
+                      ({scanResults.filter(p => p.isThermal).length} thermal)
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
@@ -527,7 +509,7 @@ export default function Discovery() {
               <Radar className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p className="text-lg font-medium">No printers discovered yet</p>
               <p className="text-sm mt-1">
-                Enter your network range and click "Full Scan" or "Quick Scan" to find printers
+                Enter your network range and click "Scan Network" to find all printers
               </p>
             </div>
           </CardContent>
@@ -539,18 +521,16 @@ export default function Discovery() {
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <AlertCircle className="h-4 w-4" />
-            Tips
+            How it works
           </CardTitle>
         </CardHeader>
         <CardContent>
           <ul className="text-sm text-muted-foreground space-y-2">
-            <li>• <strong>Quick Scan</strong>: Scans common IP endings (1, 10, 20, 50, 100, etc.) - faster but may miss some printers</li>
-            <li>• <strong>Full Scan</strong>: Scans all IPs in the range - thorough but slower</li>
-            <li>• <strong>Thermal/POS Scan</strong>: Optimized for receipt printers (port 9100 only)</li>
-            <li>• <strong>CIDR notation</strong>: Use /24 for a typical 254-host network (e.g., 192.168.1.0/24)</li>
-            <li>• <strong>Range notation</strong>: Use dashes for custom ranges (e.g., 192.168.1.1-50)</li>
-            <li>• Printers are detected via ports 9100 (RAW), 631 (IPP), and 515 (LPD)</li>
-            <li>• If a thermal printer is not detected correctly, use "Add Manually" and select "Thermal/POS"</li>
+            <li>• <strong>Scan Network</strong> finds ALL printers (network and thermal/receipt printers)</li>
+            <li>• The system <strong>automatically detects</strong> the printer type and selects the correct driver</li>
+            <li>• <strong>Thermal printers</strong> (Epson TM, Star, etc.) are marked with an orange badge</li>
+            <li>• Use <strong>Add Manually</strong> if a printer wasn't found or to force thermal mode</li>
+            <li>• Network range example: <code className="bg-gray-100 px-1 rounded">192.168.1.0/24</code></li>
           </ul>
         </CardContent>
       </Card>
