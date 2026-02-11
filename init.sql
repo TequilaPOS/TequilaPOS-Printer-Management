@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS printers (
     dns_name VARCHAR(255) NULL,
     port INT DEFAULT 9100,
     protocol ENUM('socket', 'ipp', 'ipps', 'http', 'lpd') DEFAULT 'ipp',
+    printer_type ENUM('network', 'thermal', 'unknown') DEFAULT 'network',
     cups_name VARCHAR(100) UNIQUE,
     manufacturer VARCHAR(100) NULL,
     model VARCHAR(100) NULL,
@@ -42,7 +43,11 @@ CREATE TABLE IF NOT EXISTS printers (
     is_default BOOLEAN DEFAULT FALSE,
     paper_status ENUM('ok', 'low', 'empty', 'unknown') DEFAULT 'unknown',
     toner_level INT DEFAULT -1 COMMENT '-1 means unknown, 0-100 percentage',
+    snmp_enabled BOOLEAN DEFAULT TRUE,
+    error_message VARCHAR(500) NULL,
+    page_count INT DEFAULT 0,
     last_check DATETIME NULL,
+    last_status_check DATETIME NULL,
     in_maintenance BOOLEAN DEFAULT FALSE COMMENT 'Individual maintenance mode',
     maintenance_note VARCHAR(255) NULL COMMENT 'Reason for maintenance',
     maintenance_until DATETIME NULL COMMENT 'Optional end time',
@@ -53,6 +58,7 @@ CREATE TABLE IF NOT EXISTS printers (
     INDEX idx_status (status),
     INDEX idx_cups_name (cups_name),
     INDEX idx_location (location),
+    INDEX idx_printer_type (printer_type),
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

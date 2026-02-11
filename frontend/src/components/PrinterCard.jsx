@@ -74,20 +74,29 @@ export default function PrinterCard({ printer, onTest, onToggle, onSetDefault, o
           <div className="flex items-center gap-2 flex-shrink-0">
             <span className={getStatusDotClass(printer.status)} />
             <Badge className={statusColors.badge}>
-              {printer.status || 'unknown'}
+              {printer.status === 'unknown' && printer.printer_type === 'thermal' 
+                ? 'ready' 
+                : (printer.status || 'unknown')}
             </Badge>
           </div>
         </div>
         
         <div className="mt-3 flex flex-wrap gap-1 text-sm">
-          {/* SNMP Status - with health-based coloring */}
-          <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full ${getSnmpBadgeClass()}`}>
-            {!!printer.snmp_enabled ? (
-              <><Activity className="h-3 w-3" /><span className="text-xs">SNMP</span></>
-            ) : (
-              <><WifiOff className="h-3 w-3" /><span className="text-xs">No SNMP</span></>
-            )}
-          </div>
+          {/* Printer Type Badge */}
+          {printer.printer_type === 'thermal' ? (
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">
+              <span className="text-xs">🧾 Thermal</span>
+            </div>
+          ) : (
+            /* SNMP Status - only show for network printers */
+            <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full ${getSnmpBadgeClass()}`}>
+              {!!printer.snmp_enabled ? (
+                <><Activity className="h-3 w-3" /><span className="text-xs">SNMP</span></>
+              ) : (
+                <><WifiOff className="h-3 w-3" /><span className="text-xs">Ping Only</span></>
+              )}
+            </div>
+          )}
           
           {printer.location && (
             <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
