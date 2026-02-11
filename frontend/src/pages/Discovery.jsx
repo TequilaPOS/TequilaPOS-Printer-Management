@@ -17,7 +17,9 @@ import {
   Network,
   Settings,
   Zap,
-  AlertCircle
+  AlertCircle,
+  Receipt,
+  Thermometer
 } from 'lucide-react'
 import api from '../api/axios'
 
@@ -25,6 +27,7 @@ export default function Discovery() {
   const queryClient = useQueryClient()
   const [networkRange, setNetworkRange] = useState('')
   const [scanning, setScanning] = useState(false)
+  const [scanType, setScanType] = useState('') // '', 'full', 'quick', 'thermal'
   const [scanResults, setScanResults] = useState([])
   const [selectedPrinters, setSelectedPrinters] = useState(new Set())
   const pollInterval = useRef(null)
@@ -49,15 +52,17 @@ export default function Discovery() {
       const res = await api.get('/discovery/status')
       const progress = res.data
 
-      if (progress.status === 'scanning' || progress.status === 'quick-scan') {
+      if (progress.status === 'scanning' || progress.status === 'quick-scan' || progress.status === 'thermal-scan') {
         setScanResults([...progress.found])
       } else if (progress.status === 'completed') {
         setScanResults([...progress.found])
         setScanning(false)
+        setScanType('')
         clearInterval(pollInterval.current)
         toast.success(`Scan completed! Found ${progress.found.length} printers`)
       } else if (progress.status === 'aborted') {
         setScanning(false)
+        setScanType('')
         clearInterval(pollInterval.current)
         toast.info('Scan aborted')
       }
@@ -67,7 +72,7 @@ export default function Discovery() {
   }
 
   // Start scan
-  const startScan = async (quick = false) => {
+  const startScan = async (type = 'full') => {
     if (!networkRange) {
       toast.error('Please enter a network range')
       return
@@ -75,21 +80,27 @@ export default function Discovery() {
 
     try {
       setScanning(true)
+      setScanType(type)
       setScanResults([])
       setSelectedPrinters(new Set())
 
-      await api.post('/discovery/scan', { 
-        network: networkRange,
-        quick 
-      })
-
-      toast.info(`${quick ? 'Quick' : 'Full'} scan started...`)
+      if (type === 'thermal') {
+        await api.post('/discovery/scan-thermal', { network: networkRange })
+        toast.info('Thermal printer scan started...')
+      } else {
+        await api.post('/discovery/scan', { 
+          network: networkRange,
+          quick: type === 'quick'
+        })
+        toast.info(`${type === 'quick' ? 'Quick' : 'Full'} scan started...`)
+      }
 
       // Start polling
       pollInterval.current = setInterval(pollStatus, 1000)
 
     } catch (error) {
       setScanning(false)
+      setScanType('')
       toast.error(error.response?.data?.error || 'Failed to start scan')
     }
   }
@@ -198,8 +209,36 @@ export default function Discovery() {
       case 'socket': return 'bg-blue-500'
       case 'ipp': return 'bg-green-500'
       case 'lpd': return 'bg-yellow-500'
+      case 'http': return 'bg-purple-500'
+      case 'https': return 'bg-purple-600'
       default: return 'bg-gray-500'
     }
+  }
+
+  // Printer type badge
+  const getPrinterTypeBadge = (printer) => {
+    if (printer.isThermal || printer.printerType === 'thermal') {
+      return (
+        <Badge className="bg-orange-500 text-white">
+          <Receipt className="w-3 h-3 mr-1" />
+          Thermal/POS
+        </Badge>
+      )
+    }
+    if (printer.printerType === 'network') {
+      return (
+        <Badge className="bg-blue-500 text-white">
+          <Printer className="w-3 h-3 mr-1" />
+          Network
+        </Badge>
+      )
+    }
+    return (
+      <Badge className="bg-gray-500 text-white">
+        <Printer className="w-3 h-3 mr-1" />
+        Unknown
+      </Badge>
+    )
   }
 
   // Cleanup on unmount
@@ -253,11 +292,11 @@ export default function Discovery() {
               </Button>
             ) : (
               <>
-                <Button onClick={() => startScan(true)} variant="outline">
+                <Button onClick={() => startScan('quick')} variant="outline">
                   <Zap className="h-4 w-4 mr-2" />
                   Quick Scan
                 </Button>
-                <Button onClick={() => startScan(false)}>
+                <Button onClick={() => startScan('full')}>
                   <Search className="h-4 w-4 mr-2" />
                   Full Scan
                 </Button>
@@ -265,19 +304,39 @@ export default function Discovery() {
             )}
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button variant="ghost" size="sm" onClick={scanSingleIP}>
               <Wifi className="h-4 w-4 mr-2" />
               Scan Single IP
             </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => startScan('thermal')}
+              disabled={scanning}
+              className="border-orange-300 text-orange-700 hover:bg-orange-50"
+            >
+              <Receipt className="h-4 w-4 mr-2" />
+              Scan Thermal/POS Printers
+            </Button>
           </div>
 
           {scanning && (
-            <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-lg">
-              <RefreshCw className="h-5 w-5 animate-spin text-blue-600" />
+            <div className={`flex items-center gap-3 p-4 rounded-lg ${
+              scanType === 'thermal' ? 'bg-orange-50' : 'bg-blue-50'
+            }`}>
+              <RefreshCw className={`h-5 w-5 animate-spin ${
+                scanType === 'thermal' ? 'text-orange-600' : 'text-blue-600'
+              }`} />
               <div>
-                <p className="font-medium text-blue-900">Scanning network...</p>
-                <p className="text-sm text-blue-700">
+                <p className={`font-medium ${
+                  scanType === 'thermal' ? 'text-orange-900' : 'text-blue-900'
+                }`}>
+                  {scanType === 'thermal' ? 'Scanning for thermal printers...' : 'Scanning network...'}
+                </p>
+                <p className={`text-sm ${
+                  scanType === 'thermal' ? 'text-orange-700' : 'text-blue-700'
+                }`}>
                   Found {scanResults.length} printers so far
                 </p>
               </div>
@@ -315,7 +374,7 @@ export default function Discovery() {
                   key={printer.ip}
                   className={`p-4 border rounded-lg hover:bg-muted/50 transition-colors ${
                     selectedPrinters.has(printer.ip) ? 'border-primary bg-primary/5' : ''
-                  }`}
+                  } ${printer.isThermal ? 'border-orange-200' : ''}`}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-start gap-4">
@@ -326,8 +385,9 @@ export default function Discovery() {
                         className="mt-1 h-4 w-4"
                       />
                       <div className="space-y-1">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-mono font-medium">{printer.ip}</span>
+                          {getPrinterTypeBadge(printer)}
                           {printer.info?.manufacturer && (
                             <Badge variant="outline">{printer.info.manufacturer}</Badge>
                           )}
@@ -360,21 +420,28 @@ export default function Discovery() {
 
                         {/* Recommended Config */}
                         {printer.recommended && (
-                          <div className="mt-2 text-xs text-muted-foreground">
-                            <span className="inline-flex items-center gap-1">
+                          <div className="mt-2 p-2 bg-gray-50 rounded text-xs">
+                            <div className="flex items-center gap-1 font-medium text-gray-700">
                               <Settings className="h-3 w-3" />
-                              Recommended: {printer.recommended.protocol}://
-                              {printer.ip}:{printer.recommended.port}
-                              {printer.recommended.driver !== 'raw' && (
-                                <> • Driver: {printer.recommended.driver}</>
+                              Recommended Configuration:
+                            </div>
+                            <div className="mt-1 text-gray-600">
+                              <div>URI: <code className="bg-gray-200 px-1 rounded">{printer.recommended.uri || `${printer.recommended.protocol}://${printer.ip}:${printer.recommended.port}`}</code></div>
+                              <div>Driver: <code className="bg-gray-200 px-1 rounded">{printer.recommended.driverDisplay || printer.recommended.driver}</code></div>
+                              {printer.recommended.note && (
+                                <div className="text-gray-500 italic mt-1">{printer.recommended.note}</div>
                               )}
-                            </span>
+                            </div>
                           </div>
                         )}
                       </div>
                     </div>
 
-                    <Button size="sm" onClick={() => addPrinter(printer)}>
+                    <Button 
+                      size="sm" 
+                      onClick={() => addPrinter(printer)}
+                      className={printer.isThermal ? 'bg-orange-600 hover:bg-orange-700' : ''}
+                    >
                       <Plus className="h-4 w-4 mr-1" />
                       Add
                     </Button>

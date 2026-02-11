@@ -193,40 +193,73 @@ class CupsService {
      * Get fallback driver when no specific match is found
      */
     getFallbackDriver(manufacturer, protocol) {
-        // For IPP connections, try IPP Everywhere first
+        const manufacturerLower = (manufacturer || '').toLowerCase();
+        
+        // THERMAL/POS PRINTERS - Always use raw queue for ESC/POS
+        const thermalBrands = ['epson tm', 'star', 'munbyn', 'snbc', 'posbank', 'pos bank', 
+                              'bematech', 'citizen', 'custom', 'rongta', 'xprinter', 'sewoo',
+                              'thermal', 'pos', 'receipt'];
+        
+        for (const brand of thermalBrands) {
+            if (manufacturerLower.includes(brand)) {
+                logger.info(`Thermal printer detected (${brand}), using raw driver`);
+                return 'raw';
+            }
+        }
+        
+        // Check for thermal printer model patterns
+        if (manufacturerLower.match(/tm-[a-z0-9]+/i) ||  // Epson TM series
+            manufacturerLower.match(/tsp[0-9]+/i) ||    // Star TSP series
+            manufacturerLower.match(/btp-[a-z0-9]+/i) || // SNBC BTP series
+            manufacturerLower.match(/ct-[a-z0-9]+/i)) {  // Citizen CT series
+            logger.info(`Thermal printer model pattern detected, using raw driver`);
+            return 'raw';
+        }
+        
+        // For IPP connections, try IPP Everywhere first (driverless printing)
         if (protocol === 'ipp' || protocol === 'ipps') {
             return 'everywhere';
         }
         
-        // For socket/JetDirect connections, use generic PostScript or PCL
-        const manufacturerLower = (manufacturer || '').toLowerCase();
+        // NETWORK PRINTERS - Try manufacturer-specific drivers
         
-        // HP printers typically work well with HPLIP or generic PostScript
+        // HP printers - use generic PDF driver or HPLIP
         if (manufacturerLower.includes('hp') || manufacturerLower.includes('hewlett')) {
-            return 'drv:///hp/hpcups.drv/hp-laserjet_p2015-pcl3.ppd';
+            return 'lsb/usr/cupsfilters/Generic-PDF_Printer-PDF.ppd';
         }
         
         // Brother printers
         if (manufacturerLower.includes('brother')) {
-            return 'drv:///sample.drv/generic.ppd';
+            return 'lsb/usr/cupsfilters/Generic-PDF_Printer-PDF.ppd';
         }
         
-        // Kyocera printers
+        // Kyocera printers - prefer driverless
         if (manufacturerLower.includes('kyocera')) {
-            return 'drv:///sample.drv/generic.ppd';
+            return 'everywhere';
         }
         
         // Canon printers
         if (manufacturerLower.includes('canon')) {
-            return 'drv:///sample.drv/generic.ppd';
+            return 'lsb/usr/cupsfilters/Generic-PDF_Printer-PDF.ppd';
         }
         
-        // Epson printers
+        // Epson network printers (not thermal)
         if (manufacturerLower.includes('epson')) {
-            return 'drv:///sample.drv/generic.ppd';
+            return 'lsb/usr/cupsfilters/Generic-PDF_Printer-PDF.ppd';
         }
         
-        // Default: raw queue (pass-through, relies on client-side rendering)
+        // Xerox, Ricoh, Lexmark - use generic PDF
+        if (manufacturerLower.includes('xerox') || 
+            manufacturerLower.includes('ricoh') || 
+            manufacturerLower.includes('lexmark')) {
+            return 'lsb/usr/cupsfilters/Generic-PDF_Printer-PDF.ppd';
+        }
+        
+        // Default: try driverless for socket connections, otherwise raw
+        if (protocol === 'socket') {
+            return 'everywhere';
+        }
+        
         return 'raw';
     }
 

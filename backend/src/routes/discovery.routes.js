@@ -101,6 +101,124 @@ router.post('/abort', (req, res) => {
 });
 
 /**
+ * POST /api/discovery/scan-thermal
+ * Scan specifically for thermal/POS printers
+ */
+router.post('/scan-thermal', async (req, res, next) => {
+    try {
+        const { network } = req.body;
+
+        if (!network) {
+            return res.status(400).json({ error: 'Network range required (e.g., 192.168.1.0/24)' });
+        }
+
+        // Check if scan already running
+        const progress = discoveryService.getProgress();
+        if (progress.status === 'scanning' || progress.status === 'quick-scan' || progress.status === 'thermal-scan') {
+            return res.status(409).json({ 
+                error: 'Scan already in progress',
+                progress 
+            });
+        }
+
+        logger.info(`Starting thermal printer scan: ${network}`, {
+            user: req.user.email
+        });
+
+        // Start scan in background
+        const scanPromise = discoveryService.scanThermalPrinters(network);
+
+        // Return immediately
+        res.json({ 
+            message: 'Thermal printer scan started',
+            network,
+            status: 'thermal-scan'
+        });
+
+        // Log results when complete
+        scanPromise.then(results => {
+            logAction('discovery', 'Thermal printer scan completed', {
+                network,
+                found: results.length
+            }, req);
+        }).catch(err => {
+            logger.error('Thermal scan failed:', err);
+        });
+
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * GET /api/discovery/drivers
+ * List available printer drivers
+ */
+router.get('/drivers', async (req, res, next) => {
+    try {
+        const { search, type } = req.query;
+        
+        const { exec } = require('child_process');
+        
+        let command = 'lpinfo -m 2>/dev/null';
+        if (search) {
+            command += ` | grep -i "${search}"`;
+        }
+        command += ' | head -100';
+
+        exec(command, { timeout: 10000 }, (error, stdout) => {
+            if (error) {
+                return res.json({ drivers: [], error: 'Failed to get drivers' });
+            }
+
+            const lines = stdout.trim().split('\n').filter(l => l);
+            const drivers = lines.map(line => {
+                const parts = line.split(' ');
+                const ppd = parts[0];
+                const description = parts.slice(1).join(' ');
+                return { ppd, description };
+            });
+
+            // Add thermal printer options
+            const thermalDrivers = [
+                { ppd: 'raw', description: 'Raw Queue (Direct ESC/POS) - Best for thermal printers' },
+                { ppd: 'lsb/usr/cupsfilters/textonly.ppd', description: 'Text Only Printer' },
+            ];
+
+            res.json({ 
+                drivers: type === 'thermal' ? thermalDrivers : [...thermalDrivers, ...drivers],
+                total: drivers.length + thermalDrivers.length
+            });
+        });
+
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * GET /api/discovery/thermal-manufacturers
+ * List supported thermal printer manufacturers
+ */
+router.get('/thermal-manufacturers', (req, res) => {
+    const manufacturers = [
+        { key: 'epson', name: 'Epson', models: ['TM-T20', 'TM-T88', 'TM-U220', 'TM-T82', 'TM-M30'], protocol: 'escpos' },
+        { key: 'star', name: 'Star Micronics', models: ['TSP100', 'TSP650', 'TSP700', 'TSP800', 'mPOP'], protocol: 'starline' },
+        { key: 'munbyn', name: 'Munbyn', models: ['ITPP047', 'ITPP941', 'ITPP068', 'WiFi Series'], protocol: 'escpos' },
+        { key: 'snbc', name: 'SNBC', models: ['BTP-R880NP', 'BTP-R580', 'BTP-M300'], protocol: 'escpos' },
+        { key: 'posbank', name: 'POS Bank', models: ['A7', 'A10', 'A11'], protocol: 'escpos' },
+        { key: 'bematech', name: 'Bematech', models: ['MP-4200', 'MP-100S', 'LR2000'], protocol: 'escpos' },
+        { key: 'citizen', name: 'Citizen', models: ['CT-S310', 'CT-S601', 'CT-S651'], protocol: 'escpos' },
+        { key: 'custom', name: 'Custom', models: ['TG2480', 'KUBE', 'Q3X'], protocol: 'escpos' },
+        { key: 'rongta', name: 'Rongta', models: ['RP80', 'RP326', 'RP400'], protocol: 'escpos' },
+        { key: 'xprinter', name: 'Xprinter', models: ['XP-58', 'XP-80', 'XP-Q200'], protocol: 'escpos' },
+        { key: 'sewoo', name: 'Sewoo', models: ['SLK-TS400', 'LK-P20', 'LK-P30'], protocol: 'escpos' },
+    ];
+    
+    res.json({ manufacturers });
+});
+
+/**
  * POST /api/discovery/scan-ip
  * Scan a single IP
  */
