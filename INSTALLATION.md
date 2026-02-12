@@ -90,23 +90,25 @@ brew install --cask docker
 
 | Port | Service | Description |
 |------|---------|-------------|
-| 80 | HTTP | Redirects to HTTPS |
-| 443 | HTTPS | Main web interface |
-| 631 | CUPS | Print server (internal) |
+| 8080 | HTTP | Redirects to HTTPS (configurable via HTTP_PORT) |
+| 10443 | HTTPS | Main web interface (configurable via HTTPS_PORT) |
+| 631 | CUPS | Print server (internal only) |
 | 3000 | API | Backend (internal) |
 | 3306 | MySQL | Database (internal) |
+
+> **Note:** Default ports are 8080/10443 to avoid conflicts with existing services. Change in `.env` if needed.
 
 ### Firewall Configuration
 
 ```bash
 # Ubuntu/Debian with UFW
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
+sudo ufw allow 8080/tcp
+sudo ufw allow 10443/tcp
 sudo ufw reload
 
 # CentOS/RHEL with firewalld
-sudo firewall-cmd --permanent --add-port=80/tcp
-sudo firewall-cmd --permanent --add-port=443/tcp
+sudo firewall-cmd --permanent --add-port=8080/tcp
+sudo firewall-cmd --permanent --add-port=10443/tcp
 sudo firewall-cmd --reload
 ```
 
@@ -309,7 +311,7 @@ Place your certificates in:
 
 | Field | Value |
 |-------|-------|
-| URL | `https://your-server-ip` |
+| URL | `https://your-server-ip:10443` |
 | Email/Username | `admin` |
 | Password | `admin123` |
 
