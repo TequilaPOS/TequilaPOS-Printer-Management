@@ -60,7 +60,7 @@ services:
       - cups_spool:/var/spool/cups
     ports:
       - "3000:3000"
-      # - "631:631"  # Disabled - conflicts with local CUPS on macOS
+      - "631:631"  # CUPS Web Interface
     networks:
       - printer-network
     # Para acceder a redes externas (VPN) en macOS Docker Desktop
