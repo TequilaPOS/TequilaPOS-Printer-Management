@@ -720,10 +720,18 @@ export default function Print() {
                     onChange={(e) => setPaperSize(e.target.value)}
                     className="w-full h-10 px-3 border rounded-md"
                   >
-                    <option value="letter">Letter (8.5x11)</option>
-                    <option value="legal">Legal (8.5x14)</option>
-                    <option value="a4">A4</option>
-                    <option value="a3">A3</option>
+                    <optgroup label="Standard">
+                      <option value="letter">Letter (8.5x11)</option>
+                      <option value="legal">Legal (8.5x14)</option>
+                      <option value="a4">A4</option>
+                      <option value="a3">A3</option>
+                    </optgroup>
+                    <optgroup label="Receipt / Ticket">
+                      <option value="X80MMY200MM">80mm Roll (Receipt)</option>
+                      <option value="X80MMY297MM">80mm × 297mm</option>
+                      <option value="X58MMY200MM">58mm Roll (Mini)</option>
+                      <option value="X76MMY200MM">76mm Roll</option>
+                    </optgroup>
                   </select>
                 </div>
 

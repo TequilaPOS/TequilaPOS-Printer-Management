@@ -35,8 +35,8 @@ export default function Settings() {
     setTimeout(() => setRefreshing(false), 1000)
   }
 
-  // CUPS URL - same host, port 631
-  const cupsUrl = `${window.location.protocol}//${window.location.hostname}:631`
+  // Use localhost for CUPS admin link
+  const cupsUrl = `${window.location.protocol}//localhost:631`
 
   return (
     <div className="space-y-6">

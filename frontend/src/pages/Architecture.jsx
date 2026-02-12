@@ -256,8 +256,9 @@ export default function Architecture() {
   const isHealthy = healthData?.status === 'healthy' || healthData?.healthy === true
   const isDbConnected = healthData?.database === 'connected' || healthData?.database === true
   
-  // Normalize CUPS data - API returns cups.success not running
-  const isCupsRunning = cupsData?.cups?.success === true || cupsData?.running === true
+  // Normalize CUPS data - CUPS is running if we got a response (even with no printers)
+  // cupsData.cups exists means CUPS responded, regardless of .success
+  const isCupsRunning = cupsData?.cups !== undefined || cupsData?.running === true
 
   const StatusBadge = ({ ok, label }) => (
     <Badge variant={ok ? 'default' : 'destructive'} className="text-xs">
