@@ -11,7 +11,7 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-      TZ: ${TZ:-America/Bogota}
+      TZ: ${TZ:-America/Chicago}
     volumes:
       - mysql_data:/var/lib/mysql
       # - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -53,7 +53,7 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
-      TZ: ${TZ:-America/Bogota}
+      TZ: ${TZ:-America/Chicago}
       # Use host CUPS if socket is mounted, otherwise use internal CUPS
       CUPS_SERVER: ${CUPS_SERVER:-localhost}
     volumes:
@@ -105,15 +105,15 @@ services:
       retries: 3
 
   # ===========================================
-  # Nginx Reverse Proxy with SSL
+  # Nginx Reverse Proxy (HTTP only)
   # ===========================================
   nginx:
     image: nginx:alpine
     container_name: printer-nginx
     restart: unless-stopped
     ports:
-      - "${HTTP_PORT:-8080}:80"
-      - "${HTTPS_PORT:-10443}:443"
+      - "8080:80"
+      # - "10443:443"  # Uncomment for HTTPS
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
