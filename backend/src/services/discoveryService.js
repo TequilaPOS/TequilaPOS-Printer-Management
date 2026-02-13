@@ -1084,23 +1084,31 @@ class DiscoveryService {
      * Detect local network
      */
     async detectLocalNetwork() {
+        // Check for configured default network first
+        const configuredNetwork = process.env.DEFAULT_NETWORK;
+        if (configuredNetwork) {
+            return configuredNetwork;
+        }
+
         return new Promise((resolve) => {
-            exec("ip route | grep default | awk '{print $3}' | head -1", (error, stdout) => {
+            // Try to detect host network by checking for common local networks
+            exec("ip route 2>/dev/null | grep -v docker | grep -v br- | grep default | awk '{print $3}' | head -1", (error, stdout) => {
                 if (!error && stdout.trim()) {
                     const gateway = stdout.trim();
                     const parts = gateway.split('.');
                     parts[3] = '0';
                     resolve(`${parts.join('.')}/24`);
                 } else {
-                    // Fallback: try to detect from interfaces
-                    exec("hostname -I | awk '{print $1}'", (err2, stdout2) => {
+                    // Fallback: try to detect from interfaces (exclude docker)
+                    exec("ip addr 2>/dev/null | grep 'inet ' | grep -v docker | grep -v '127.0.0.1' | grep -v '172.' | awk '{print $2}' | cut -d/ -f1 | head -1", (err2, stdout2) => {
                         if (!err2 && stdout2.trim()) {
                             const ip = stdout2.trim();
                             const parts = ip.split('.');
                             parts[3] = '0';
                             resolve(`${parts.join('.')}/24`);
                         } else {
-                            resolve('192.168.1.0/24');
+                            // Default fallback
+                            resolve('10.0.100.0/24');
                         }
                     });
                 }

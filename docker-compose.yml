@@ -56,6 +56,8 @@ services:
       TZ: ${TZ:-America/Chicago}
       # Use host CUPS if socket is mounted, otherwise use internal CUPS
       CUPS_SERVER: ${CUPS_SERVER:-localhost}
+      # Default network for Discovery (e.g., 10.0.100.0/24)
+      DEFAULT_NETWORK: ${DEFAULT_NETWORK:-}
     volumes:
       - ./backend/logs:/app/logs
       # Mount host CUPS socket (works on Ubuntu and macOS)
