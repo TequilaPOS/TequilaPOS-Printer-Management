@@ -1,17 +1,25 @@
 # ===========================================
-# Development Override
+# Development Override (macOS)
 # ===========================================
 # This file is automatically loaded by docker-compose
-# and overrides settings for faster development.
+# and overrides settings for local development on macOS.
 #
-# For production, rename or delete this file.
+# For Ubuntu production, rename or delete this file.
+# On Ubuntu: mv docker-compose.override.yml docker-compose.override.yml.bak
 # ===========================================
 
 services:
-  # Backend: mount source code for hot changes (no rebuild needed)
+  # Backend: Use internal CUPS on macOS (socket path differs from Ubuntu)
   backend:
     volumes:
       - ./backend/src:/app/src:ro
+      - ./backend/logs:/app/logs
+      # macOS: Don't mount host socket, use internal CUPS
+      - cups_data:/etc/cups
+      - cups_spool:/var/spool/cups
+    ports:
+      - "3000:3000"
+      - "631:631"  # Expose internal CUPS for development
     environment:
       NODE_ENV: development
 
