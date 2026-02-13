@@ -57,7 +57,6 @@ if [ "$USE_HOST_CUPS" = false ]; then
         fi
         sleep 1
     done
-    done
 fi
 
 # Show CUPS info
