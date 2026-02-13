@@ -14,10 +14,12 @@ if [ -S /var/run/cups/cups.sock ]; then
     echo "✅ Host CUPS socket detected - using host CUPS server"
     echo "   Socket: /var/run/cups/cups.sock"
     
-    # Verify host CUPS is accessible
-    if lpstat -r 2>/dev/null | grep -q "scheduler is running"; then
-        echo "✅ Host CUPS is running"
+    # Verify host CUPS is accessible via the socket
+    if lpstat -h /var/run/cups/cups.sock -r 2>/dev/null | grep -q "scheduler is running"; then
+        echo "✅ Host CUPS is running and accessible"
         USE_HOST_CUPS=true
+        # Set environment so all CUPS commands use the host socket
+        export CUPS_SERVER=/var/run/cups/cups.sock
     else
         echo "⚠️  Host CUPS socket exists but scheduler not responding"
         echo "   Make sure CUPS is running on the host: sudo systemctl start cups"
