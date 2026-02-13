@@ -512,28 +512,11 @@ export default function Discovery() {
                       </div>
                     </div>
 
-                    {printer.alreadyExists ? (
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        disabled
-                        className="text-green-600 border-green-300"
-                      >
-                        <CheckCircle className="h-4 w-4 mr-1" />
+                    {printer.alreadyExists && (
+                      <Badge variant="outline" className="text-green-600 border-green-300">
+                        <CheckCircle className="h-3 w-3 mr-1" />
                         Added
-                      </Button>
-                    ) : (
-                      <Button 
-                        size="sm" 
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          addPrinter(printer)
-                        }}
-                        className={printer.isThermal ? 'bg-orange-600 hover:bg-orange-700' : ''}
-                      >
-                        <Plus className="h-4 w-4 mr-1" />
-                        Add
-                      </Button>
+                      </Badge>
                     )}
                   </div>
                 </div>
