@@ -9,6 +9,7 @@ const snmp = require('net-snmp');
 const { exec } = require('child_process');
 const logger = require('../utils/logger');
 const { DRIVER_DATABASE, THERMAL_DATABASE, GENERIC_DRIVERS } = require('./driverDatabase');
+const db = require('../config/database');
 
 // Common printer ports
 const PRINTER_PORTS = {
@@ -158,6 +159,66 @@ class DiscoveryService {
         this.scanning = false;
         this.progress = { current: 0, total: 0, found: [] };
         this.abortController = null;
+    }
+
+    /**
+     * Check if printer already exists in database
+     */
+    async existsInDatabase(ip) {
+        try {
+            const result = await db.queryOne(
+                'SELECT id, name, cups_name FROM printers WHERE ip_address = ?',
+                [ip]
+            );
+            return result ? { exists: true, ...result } : { exists: false };
+        } catch (error) {
+            logger.warn(`Failed to check DB for IP ${ip}:`, error.message);
+            return { exists: false };
+        }
+    }
+
+    /**
+     * Check if printer already exists in CUPS
+     */
+    async existsInCups(ip) {
+        return new Promise((resolve) => {
+            exec(`lpstat -v 2>/dev/null | grep -i "${ip}"`, { timeout: 5000 }, (error, stdout) => {
+                if (error || !stdout.trim()) {
+                    resolve({ exists: false });
+                    return;
+                }
+                
+                // Parse CUPS printer name from output
+                const lines = stdout.trim().split('\n');
+                const printers = lines.map(line => {
+                    const match = line.match(/device for (.+?):/);
+                    return match ? match[1] : null;
+                }).filter(Boolean);
+                
+                resolve({ 
+                    exists: printers.length > 0, 
+                    cupsNames: printers 
+                });
+            });
+        });
+    }
+
+    /**
+     * Check if printer exists in both DB and CUPS
+     */
+    async checkPrinterExists(ip) {
+        const [dbResult, cupsResult] = await Promise.all([
+            this.existsInDatabase(ip),
+            this.existsInCups(ip)
+        ]);
+        
+        return {
+            existsInDb: dbResult.exists,
+            existsInCups: cupsResult.exists,
+            alreadyExists: dbResult.exists || cupsResult.exists,
+            dbInfo: dbResult.exists ? { id: dbResult.id, name: dbResult.name, cupsName: dbResult.cups_name } : null,
+            cupsNames: cupsResult.cupsNames || []
+        };
     }
 
     /**
@@ -624,7 +685,21 @@ class DiscoveryService {
             printerType: 'unknown', // 'network', 'thermal', 'unknown'
             protocols: [],
             info: {},
-            recommended: {}
+            recommended: {},
+            alreadyExists: false,
+            existsInDb: false,
+            existsInCups: false,
+            existingInfo: null
+        };
+
+        // Check if printer already exists in DB or CUPS
+        const existsCheck = await this.checkPrinterExists(ip);
+        result.alreadyExists = existsCheck.alreadyExists;
+        result.existsInDb = existsCheck.existsInDb;
+        result.existsInCups = existsCheck.existsInCups;
+        result.existingInfo = {
+            dbInfo: existsCheck.dbInfo,
+            cupsNames: existsCheck.cupsNames
         };
 
         // Check common printer ports in parallel

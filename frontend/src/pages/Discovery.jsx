@@ -241,9 +241,12 @@ export default function Discovery() {
     setSelectedPrinters(newSet)
   }
 
-  // Select all
+  // Select all (only non-existing printers)
   const selectAll = () => {
-    setSelectedPrinters(new Set(scanResults.map(p => p.ip)))
+    const selectableIps = scanResults
+      .filter(p => !p.alreadyExists)
+      .map(p => p.ip)
+    setSelectedPrinters(new Set(selectableIps))
   }
 
   // Protocol badge color
@@ -260,6 +263,15 @@ export default function Discovery() {
 
   // Printer type badge
   const getPrinterTypeBadge = (printer) => {
+    // Already exists badge - show first
+    if (printer.alreadyExists) {
+      return (
+        <Badge className="bg-green-600 text-white">
+          <CheckCircle className="w-3 h-3 mr-1" />
+          Already Added
+        </Badge>
+      )
+    }
     if (printer.isThermal || printer.printerType === 'thermal') {
       return (
         <Badge className="bg-orange-500 text-white">
@@ -387,10 +399,20 @@ export default function Discovery() {
               <CardTitle className="flex items-center gap-2">
                 <Printer className="h-5 w-5" />
                 Discovered Printers ({scanResults.length})
+                {scanResults.filter(p => p.alreadyExists).length > 0 && (
+                  <Badge variant="outline" className="ml-2 text-green-600 border-green-300">
+                    {scanResults.filter(p => p.alreadyExists).length} already added
+                  </Badge>
+                )}
               </CardTitle>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={selectAll}>
-                  Select All
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={selectAll}
+                  disabled={scanResults.filter(p => !p.alreadyExists).length === 0}
+                >
+                  Select All New
                 </Button>
                 {selectedPrinters.size > 0 && (
                   <Button size="sm" onClick={addSelectedPrinters}>
@@ -408,7 +430,7 @@ export default function Discovery() {
                   key={printer.ip}
                   className={`p-4 border rounded-lg hover:bg-muted/50 transition-colors ${
                     selectedPrinters.has(printer.ip) ? 'border-primary bg-primary/5' : ''
-                  } ${printer.isThermal ? 'border-orange-200' : ''}`}
+                  } ${printer.isThermal ? 'border-orange-200' : ''} ${printer.alreadyExists ? 'border-green-200 bg-green-50/50' : ''}`}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-start gap-4">
@@ -416,7 +438,8 @@ export default function Discovery() {
                         type="checkbox"
                         checked={selectedPrinters.has(printer.ip)}
                         onChange={() => toggleSelect(printer.ip)}
-                        className="mt-1 h-4 w-4"
+                        disabled={printer.alreadyExists}
+                        className={`mt-1 h-4 w-4 ${printer.alreadyExists ? 'opacity-50 cursor-not-allowed' : ''}`}
                       />
                       <div className="space-y-1">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -453,7 +476,7 @@ export default function Discovery() {
                         </div>
 
                         {/* Recommended Config */}
-                        {printer.recommended && (
+                        {printer.recommended && !printer.alreadyExists && (
                           <div className="mt-2 p-2 bg-gray-50 rounded text-xs">
                             <div className="flex items-center gap-1 font-medium text-gray-700">
                               <Settings className="h-3 w-3" />
@@ -468,17 +491,50 @@ export default function Discovery() {
                             </div>
                           </div>
                         )}
+
+                        {/* Already exists info */}
+                        {printer.alreadyExists && printer.existingInfo && (
+                          <div className="mt-2 p-2 bg-green-50 rounded text-xs">
+                            <div className="flex items-center gap-1 font-medium text-green-700">
+                              <CheckCircle className="h-3 w-3" />
+                              Already configured:
+                            </div>
+                            <div className="mt-1 text-green-600">
+                              {printer.existingInfo.dbInfo && (
+                                <div>Name: <code className="bg-green-100 px-1 rounded">{printer.existingInfo.dbInfo.name}</code></div>
+                              )}
+                              {printer.existingInfo.cupsNames?.length > 0 && (
+                                <div>CUPS: <code className="bg-green-100 px-1 rounded">{printer.existingInfo.cupsNames.join(', ')}</code></div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    <Button 
-                      size="sm" 
-                      onClick={() => addPrinter(printer)}
-                      className={printer.isThermal ? 'bg-orange-600 hover:bg-orange-700' : ''}
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Add
-                    </Button>
+                    {printer.alreadyExists ? (
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        disabled
+                        className="text-green-600 border-green-300"
+                      >
+                        <CheckCircle className="h-4 w-4 mr-1" />
+                        Added
+                      </Button>
+                    ) : (
+                      <Button 
+                        size="sm" 
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          addPrinter(printer)
+                        }}
+                        className={printer.isThermal ? 'bg-orange-600 hover:bg-orange-700' : ''}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Add
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
