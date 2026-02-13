@@ -9,41 +9,68 @@ echo "============================================"
 echo "🖨️  Printer Management System Starting..."
 echo "============================================"
 
-# If /etc/cups is persisted via a Docker volume, it may contain config from a previous
-# image/distro. Some directives are version-specific and can prevent CUPS from starting.
-# Example: 'PeerCred' is not recognized by Debian bookworm's CUPS.
-if [ -f /etc/cups/cups-files.conf ] && grep -qE '^[[:space:]]*PeerCred\b' /etc/cups/cups-files.conf; then
-    echo "🛠️  Patching legacy CUPS config (PeerCred) for compatibility..."
-    sed -i 's/^[[:space:]]*PeerCred\b/# PeerCred/' /etc/cups/cups-files.conf || true
+# Check if host CUPS socket is mounted
+if [ -S /var/run/cups/cups.sock ]; then
+    echo "✅ Host CUPS socket detected - using host CUPS server"
+    echo "   Socket: /var/run/cups/cups.sock"
+    
+    # Verify host CUPS is accessible
+    if lpstat -r 2>/dev/null | grep -q "scheduler is running"; then
+        echo "✅ Host CUPS is running"
+        USE_HOST_CUPS=true
+    else
+        echo "⚠️  Host CUPS socket exists but scheduler not responding"
+        echo "   Make sure CUPS is running on the host: sudo systemctl start cups"
+        USE_HOST_CUPS=false
+    fi
+else
+    echo "📦 No host CUPS socket - using internal CUPS server"
+    USE_HOST_CUPS=false
 fi
 
-# Create necessary directories
-mkdir -p /run/cups /var/spool/cups /var/log/cups
-
-# Start CUPS daemon
-echo "🖨️  Starting CUPS daemon..."
-/usr/sbin/cupsd -f &
-CUPS_PID=$!
-
-# Wait for CUPS to be ready
-echo "⏳ Waiting for CUPS to start..."
-for i in {1..30}; do
-    if lpstat -r 2>/dev/null | grep -q "scheduler is running"; then
-        echo "✅ CUPS is running (PID: $CUPS_PID)"
-        break
+# Only start internal CUPS if not using host CUPS
+if [ "$USE_HOST_CUPS" = false ]; then
+    # If /etc/cups is persisted via a Docker volume, it may contain config from a previous
+    # image/distro. Some directives are version-specific and can prevent CUPS from starting.
+    if [ -f /etc/cups/cups-files.conf ] && grep -qE '^[[:space:]]*PeerCred\b' /etc/cups/cups-files.conf; then
+        echo "🛠️  Patching legacy CUPS config (PeerCred) for compatibility..."
+        sed -i 's/^[[:space:]]*PeerCred\b/# PeerCred/' /etc/cups/cups-files.conf || true
     fi
-    if [ $i -eq 30 ]; then
-        echo "⚠️  CUPS startup timeout, continuing anyway..."
-    fi
-    sleep 1
-done
+
+    # Create necessary directories
+    mkdir -p /run/cups /var/spool/cups /var/log/cups
+
+    # Start CUPS daemon
+    echo "🖨️  Starting internal CUPS daemon..."
+    /usr/sbin/cupsd -f &
+    CUPS_PID=$!
+
+    # Wait for CUPS to be ready
+    echo "⏳ Waiting for CUPS to start..."
+    for i in {1..30}; do
+        if lpstat -r 2>/dev/null | grep -q "scheduler is running"; then
+            echo "✅ Internal CUPS is running (PID: $CUPS_PID)"
+            break
+        fi
+        if [ $i -eq 30 ]; then
+            echo "⚠️  CUPS startup timeout, continuing anyway..."
+        fi
+        sleep 1
+    done
+    done
+fi
 
 # Show CUPS info
 echo ""
 echo "📊 CUPS Status:"
 lpstat -r 2>/dev/null || echo "   Checking..."
 echo ""
-echo "🌐 CUPS Web Interface: http://localhost:631"
+
+if [ "$USE_HOST_CUPS" = true ]; then
+    echo "🌐 CUPS Web Interface: http://localhost:631 (host)"
+else
+    echo "🌐 CUPS Web Interface: http://localhost:631 (container)"
+fi
 echo ""
 
 # List available printer drivers

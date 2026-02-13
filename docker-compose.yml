@@ -54,13 +54,20 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
       TZ: ${TZ:-America/Bogota}
+      # Use host CUPS if socket is mounted, otherwise use internal CUPS
+      CUPS_SERVER: ${CUPS_SERVER:-localhost}
     volumes:
       - ./backend/logs:/app/logs
+      # Mount host CUPS socket (works on Ubuntu and macOS)
+      # Comment this line to use internal CUPS instead
+      - /var/run/cups/cups.sock:/var/run/cups/cups.sock
+      # Internal CUPS config (used as fallback)
       - cups_data:/etc/cups
       - cups_spool:/var/spool/cups
     ports:
       - "3000:3000"
-      - "631:631"  # CUPS Web Interface
+      # Port 631 not needed when using host CUPS
+      # - "631:631"
     networks:
       - printer-network
     # Para acceder a redes externas (VPN) en macOS Docker Desktop
