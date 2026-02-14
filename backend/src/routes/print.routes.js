@@ -355,4 +355,270 @@ router.get('/options/:printerId', async (req, res, next) => {
     }
 });
 
+// ===========================================
+// POS Integration Endpoints
+// ===========================================
+
+/**
+ * POST /api/print/raw
+ * Print raw ESC/POS data (for thermal printers from POS systems)
+ * 
+ * Body can be:
+ * - { printer: "name or id", data: "base64 encoded data" }
+ * - { printer: "name or id", text: "plain text" }
+ * - { ip: "192.168.1.100", data: "base64 encoded data" } (print by IP directly)
+ */
+router.post('/raw', async (req, res, next) => {
+    try {
+        const { printer, ip, data, text, cut = true } = req.body;
+        
+        if (!printer && !ip) {
+            return res.status(400).json({ error: 'Printer name/id or IP is required' });
+        }
+        
+        if (!data && !text) {
+            return res.status(400).json({ error: 'Data (base64) or text is required' });
+        }
+        
+        let printerRecord = null;
+        let cupsName = null;
+        
+        // Find printer by name, id, or ip
+        if (printer) {
+            // Try by ID first
+            if (!isNaN(printer)) {
+                printerRecord = await db.queryOne('SELECT * FROM printers WHERE id = ?', [printer]);
+            }
+            
+            // Try by name
+            if (!printerRecord) {
+                printerRecord = await db.queryOne('SELECT * FROM printers WHERE name = ? OR cups_name = ?', [printer, printer]);
+            }
+            
+            if (!printerRecord) {
+                return res.status(404).json({ error: `Printer "${printer}" not found` });
+            }
+            
+            cupsName = printerRecord.cups_name;
+        } else if (ip) {
+            // Find by IP
+            printerRecord = await db.queryOne('SELECT * FROM printers WHERE ip_address = ?', [ip]);
+            if (printerRecord) {
+                cupsName = printerRecord.cups_name;
+            } else {
+                // Print directly to IP without CUPS (raw socket)
+                const net = require('net');
+                const port = req.body.port || 9100;
+                
+                let printData;
+                if (data) {
+                    printData = Buffer.from(data, 'base64');
+                } else {
+                    // Build ESC/POS from text
+                    printData = Buffer.concat([
+                        Buffer.from('\x1b\x40'),  // Initialize
+                        Buffer.from(text),
+                        Buffer.from('\n\n\n'),
+                        cut ? Buffer.from('\x1d\x56\x00') : Buffer.from('')  // Cut
+                    ]);
+                }
+                
+                return new Promise((resolve, reject) => {
+                    const socket = new net.Socket();
+                    socket.setTimeout(10000);
+                    
+                    socket.connect(port, ip, () => {
+                        socket.write(printData, () => {
+                            socket.end();
+                            res.json({ 
+                                success: true, 
+                                message: 'Print job sent directly to printer',
+                                ip,
+                                port,
+                                bytes: printData.length
+                            });
+                            resolve();
+                        });
+                    });
+                    
+                    socket.on('error', (err) => {
+                        res.status(500).json({ error: `Failed to connect to printer: ${err.message}` });
+                        resolve();
+                    });
+                    
+                    socket.on('timeout', () => {
+                        socket.destroy();
+                        res.status(500).json({ error: 'Connection timeout' });
+                        resolve();
+                    });
+                });
+            }
+        }
+        
+        // Print via CUPS
+        if (cupsName) {
+            const fs = require('fs');
+            const tmpFile = `/tmp/pos_print_${Date.now()}.bin`;
+            
+            let printData;
+            if (data) {
+                printData = Buffer.from(data, 'base64');
+            } else {
+                // Build ESC/POS from text
+                printData = Buffer.concat([
+                    Buffer.from('\x1b\x40'),  // Initialize
+                    Buffer.from(text),
+                    Buffer.from('\n\n\n'),
+                    cut ? Buffer.from('\x1d\x56\x00') : Buffer.from('')  // Cut
+                ]);
+            }
+            
+            fs.writeFileSync(tmpFile, printData);
+            
+            const { execCupsCommand } = require('../utils/shellExec');
+            const result = await execCupsCommand(`lp -d "${cupsName}" -o raw "${tmpFile}"`);
+            
+            fs.unlinkSync(tmpFile);
+            
+            if (result.success) {
+                const match = result.stdout.match(/request id is (\S+)/);
+                const jobId = match ? match[1] : null;
+                
+                // Log the print job
+                if (printerRecord) {
+                    await db.insert(`
+                        INSERT INTO print_jobs (printer_id, user_id, document_name, status, pages)
+                        VALUES (?, ?, 'POS Print', 'completed', 1)
+                    `, [printerRecord.id, req.user?.id || null]);
+                }
+                
+                return res.json({ 
+                    success: true, 
+                    message: 'Print job sent',
+                    jobId,
+                    printer: printerRecord?.name,
+                    cups_name: cupsName
+                });
+            } else {
+                return res.status(500).json({ error: result.stderr || 'Print failed' });
+            }
+        }
+        
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * POST /api/print/receipt
+ * Simplified receipt printing for POS
+ * Automatically formats text with ESC/POS commands
+ */
+router.post('/receipt', async (req, res, next) => {
+    try {
+        const { 
+            printer,
+            lines = [],
+            header = null,
+            footer = null,
+            cut = true,
+            feedLines = 5
+        } = req.body;
+        
+        if (!printer) {
+            return res.status(400).json({ error: 'Printer name or id is required' });
+        }
+        
+        // Find printer
+        let printerRecord = null;
+        if (!isNaN(printer)) {
+            printerRecord = await db.queryOne('SELECT * FROM printers WHERE id = ?', [printer]);
+        }
+        if (!printerRecord) {
+            printerRecord = await db.queryOne('SELECT * FROM printers WHERE name = ? OR cups_name = ?', [printer, printer]);
+        }
+        if (!printerRecord) {
+            return res.status(404).json({ error: `Printer "${printer}" not found` });
+        }
+        
+        // Build ESC/POS receipt
+        const parts = [
+            Buffer.from('\x1b\x40'),  // Initialize
+        ];
+        
+        // Header (centered, bold)
+        if (header) {
+            parts.push(Buffer.from('\x1b\x61\x01'));  // Center
+            parts.push(Buffer.from('\x1b\x45\x01'));  // Bold on
+            parts.push(Buffer.from(header + '\n'));
+            parts.push(Buffer.from('\x1b\x45\x00'));  // Bold off
+            parts.push(Buffer.from('================================\n'));
+            parts.push(Buffer.from('\x1b\x61\x00'));  // Left align
+        }
+        
+        // Lines
+        for (const line of lines) {
+            if (typeof line === 'string') {
+                parts.push(Buffer.from(line + '\n'));
+            } else if (typeof line === 'object') {
+                // { text: "...", align: "center"|"left"|"right", bold: true/false }
+                if (line.align === 'center') parts.push(Buffer.from('\x1b\x61\x01'));
+                else if (line.align === 'right') parts.push(Buffer.from('\x1b\x61\x02'));
+                else parts.push(Buffer.from('\x1b\x61\x00'));
+                
+                if (line.bold) parts.push(Buffer.from('\x1b\x45\x01'));
+                parts.push(Buffer.from((line.text || '') + '\n'));
+                if (line.bold) parts.push(Buffer.from('\x1b\x45\x00'));
+            }
+        }
+        
+        // Footer (centered)
+        if (footer) {
+            parts.push(Buffer.from('\n'));
+            parts.push(Buffer.from('--------------------------------\n'));
+            parts.push(Buffer.from('\x1b\x61\x01'));  // Center
+            parts.push(Buffer.from(footer + '\n'));
+        }
+        
+        // Feed and cut
+        parts.push(Buffer.from('\n'.repeat(feedLines)));
+        if (cut) {
+            parts.push(Buffer.from('\x1d\x56\x00'));  // Full cut
+        }
+        
+        const printData = Buffer.concat(parts);
+        
+        // Send to printer
+        const fs = require('fs');
+        const tmpFile = `/tmp/receipt_${Date.now()}.bin`;
+        fs.writeFileSync(tmpFile, printData);
+        
+        const { execCupsCommand } = require('../utils/shellExec');
+        const result = await execCupsCommand(`lp -d "${printerRecord.cups_name}" -o raw "${tmpFile}"`);
+        
+        fs.unlinkSync(tmpFile);
+        
+        if (result.success) {
+            const match = result.stdout.match(/request id is (\S+)/);
+            
+            await db.insert(`
+                INSERT INTO print_jobs (printer_id, user_id, document_name, status, pages)
+                VALUES (?, ?, 'Receipt', 'completed', 1)
+            `, [printerRecord.id, req.user?.id || null]);
+            
+            return res.json({ 
+                success: true, 
+                message: 'Receipt printed',
+                jobId: match ? match[1] : null,
+                printer: printerRecord.name
+            });
+        } else {
+            return res.status(500).json({ error: result.stderr || 'Print failed' });
+        }
+        
+    } catch (error) {
+        next(error);
+    }
+});
+
 module.exports = router;
