@@ -2,7 +2,7 @@
 // CUPS Service - Printer Management via Shell
 // ===========================================
 
-const { execCommand, pingHost, sanitizeForShell, isValidIP } = require('../utils/shellExec');
+const { execCommand, execCupsCommand, pingHost, sanitizeForShell, isValidIP } = require('../utils/shellExec');
 const { DRIVER_DATABASE, THERMAL_DATABASE, GENERIC_DRIVERS } = require('./driverDatabase');
 const logger = require('../utils/logger');
 
@@ -77,14 +77,14 @@ class CupsService {
                 cmd += ` -D "${safeDescription}"`;
             }
             
-            const addResult = await execCommand(cmd);
+            const addResult = await execCupsCommand(cmd);
             logger.info(`lpadmin result: ${JSON.stringify(addResult)}`);
             
             // Enable the printer
-            await execCommand(`cupsenable "${safeName}"`);
+            await execCupsCommand(`cupsenable "${safeName}"`);
             
             // Accept jobs
-            await execCommand(`cupsaccept "${safeName}"`);
+            await execCupsCommand(`cupsaccept "${safeName}"`);
             
             logger.info(`Printer ${safeName} added successfully with driver: ${driver}`);
             
@@ -259,7 +259,7 @@ class CupsService {
         }
         
         try {
-            const { stdout } = await execCommand('lpinfo -m 2>/dev/null');
+            const { stdout } = await execCupsCommand('lpinfo -m 2>/dev/null');
             const lines = stdout.split('\n').filter(l => l.trim());
             
             this.availableDrivers = lines.map(line => {
@@ -389,9 +389,9 @@ class CupsService {
                 cmd += ` -D "${safeDescription}"`;
             }
             
-            await execCommand(cmd);
-            await execCommand(`cupsenable "${safeName}"`);
-            await execCommand(`cupsaccept "${safeName}"`);
+            await execCupsCommand(cmd);
+            await execCupsCommand(`cupsenable "${safeName}"`);
+            await execCupsCommand(`cupsaccept "${safeName}"`);
             
             return { success: true, cupsName: safeName, uri };
             
@@ -411,13 +411,13 @@ class CupsService {
         
         try {
             // First reject new jobs
-            await execCommand(`cupsreject "${safeName}"`).catch(() => {});
+            await execCupsCommand(`cupsreject "${safeName}"`).catch(() => {});
             
             // Disable printer
-            await execCommand(`cupsdisable "${safeName}"`).catch(() => {});
+            await execCupsCommand(`cupsdisable "${safeName}"`).catch(() => {});
             
             // Remove printer
-            await execCommand(`lpadmin -x "${safeName}"`);
+            await execCupsCommand(`lpadmin -x "${safeName}"`);
             
             logger.info(`Printer ${safeName} deleted successfully`);
             return { success: true };
@@ -435,7 +435,7 @@ class CupsService {
         const safeName = sanitizeForShell(cupsName);
         
         try {
-            const result = await execCommand(`lpstat -p "${safeName}"`);
+            const result = await execCupsCommand(`lpstat -p "${safeName}"`);
             const output = result.stdout.toLowerCase();
             
             let status = 'unknown';
@@ -469,7 +469,7 @@ class CupsService {
      */
     async listAllPrinters() {
         try {
-            const result = await execCommand('lpstat -p -d');
+            const result = await execCupsCommand('lpstat -p -d');
             const lines = result.stdout.split('\n').filter(l => l.trim());
             
             const printers = [];
@@ -519,7 +519,7 @@ class CupsService {
         const safeName = sanitizeForShell(cupsName);
         
         try {
-            await execCommand(`lpoptions -d "${safeName}"`);
+            await execCupsCommand(`lpoptions -d "${safeName}"`);
             return { success: true };
         } catch (error) {
             return { success: false, error: error.stderr || error.error };
@@ -561,7 +561,7 @@ class CupsService {
         try {
             // Print a simple test message
             const cmd = `echo "Test Print - ${timestamp}\\nPrinter Management System\\nThis is a test page." | lp -d "${safeName}"`;
-            const result = await execCommand(cmd);
+            const result = await execCupsCommand(cmd);
             
             // Parse job ID from output
             // Output format: "request id is PrinterName-123 (1 file(s))"
@@ -587,7 +587,7 @@ class CupsService {
         const safeJobId = sanitizeForShell(jobId);
         
         try {
-            await execCommand(`cancel "${safeJobId}"`);
+            await execCupsCommand(`cancel "${safeJobId}"`);
             return { success: true };
         } catch (error) {
             return { success: false, error: error.stderr || error.error };
@@ -604,7 +604,7 @@ class CupsService {
                 cmd = `lpstat -o "${sanitizeForShell(cupsName)}"`;
             }
             
-            const result = await execCommand(cmd);
+            const result = await execCupsCommand(cmd);
             const lines = result.stdout.split('\n').filter(l => l.trim());
             
             const jobs = lines.map(line => {
@@ -691,7 +691,7 @@ class CupsService {
         const safeName = sanitizeForShell(cupsName);
         
         try {
-            const result = await execCommand(`lpoptions -p "${safeName}" -l`);
+            const result = await execCupsCommand(`lpoptions -p "${safeName}" -l`);
             
             // Parse options
             const options = {};

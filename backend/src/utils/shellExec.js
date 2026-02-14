@@ -3,7 +3,12 @@
 // ===========================================
 
 const { exec, spawn } = require('child_process');
+const fs = require('fs');
 const logger = require('./logger');
+
+// Check if CUPS socket exists (for Docker with mounted socket)
+const CUPS_SOCKET = '/var/run/cups/cups.sock';
+const USE_CUPS_SOCKET = fs.existsSync(CUPS_SOCKET);
 
 /**
  * Execute a shell command and return promise with output
@@ -33,6 +38,30 @@ function execCommand(command, options = {}) {
             });
         });
     });
+}
+
+/**
+ * Execute CUPS command with socket support
+ * Automatically adds -h socket path when running in Docker with mounted socket
+ */
+function execCupsCommand(command, options = {}) {
+    let finalCommand = command;
+    
+    // Add socket path to CUPS commands when socket is available
+    if (USE_CUPS_SOCKET) {
+        // Commands that support -h option: lpadmin, lpstat, lp, lpinfo, lpoptions, cupsenable, cupsaccept, cupsreject, cupsdisable, cancel
+        const cupsCommands = ['lpadmin', 'lpstat', 'lp ', 'lpinfo', 'lpoptions', 'cupsenable', 'cupsaccept', 'cupsreject', 'cupsdisable', 'cancel'];
+        
+        for (const cmd of cupsCommands) {
+            if (command.startsWith(cmd) || command.includes(` ${cmd}`)) {
+                // Insert -h option after the command name
+                finalCommand = command.replace(new RegExp(`^(${cmd.trim()})`), `$1 -h ${CUPS_SOCKET}`);
+                break;
+            }
+        }
+    }
+    
+    return execCommand(finalCommand, options);
 }
 
 /**
@@ -141,6 +170,7 @@ function isValidHostname(hostname) {
 
 module.exports = {
     execCommand,
+    execCupsCommand,
     execStreamCommand,
     pingHost,
     sanitizeForShell,
