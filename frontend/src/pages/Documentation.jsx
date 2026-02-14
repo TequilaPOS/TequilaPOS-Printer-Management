@@ -84,6 +84,14 @@ export default function Documentation() {
           <Code className="h-4 w-4" />
           Technical Guide
         </Button>
+        <Button 
+          variant={activeTab === 'api' ? 'default' : 'outline'}
+          onClick={() => setActiveTab('api')}
+          className="gap-2"
+        >
+          <Globe className="h-4 w-4" />
+          API Guide
+        </Button>
       </div>
 
       {/* USER MANUAL */}
@@ -1614,6 +1622,415 @@ docker exec printer-mysql mysqladmin -u root -p ping`}
     ├── Dockerfile          # Nginx + SSL
     └── nginx.conf          # Reverse proxy config`}
               </pre>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* API GUIDE */}
+      {activeTab === 'api' && (
+        <div className="space-y-6">
+          {/* Introduction */}
+          <Card className="overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-green-600 to-emerald-600 text-white">
+              <CardTitle className="flex items-center gap-2">
+                <Globe className="h-6 w-6" />
+                API Integration Guide
+              </CardTitle>
+              <CardDescription className="text-green-100">
+                RESTful API for POS and external system integration
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <p className="text-muted-foreground">
+                This guide explains how to integrate the Printer Management System with your POS 
+                or other external systems. All endpoints require JWT authentication.
+              </p>
+              <div className="mt-4 flex items-center gap-2">
+                <Badge variant="outline">REST API</Badge>
+                <Badge variant="outline">JSON</Badge>
+                <Badge variant="outline">JWT Auth</Badge>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Base URL */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Server className="h-5 w-5" />
+                Base URL
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CodeBlock 
+                code={`http://<server-ip>:8080/api
+
+Example: http://192.168.170.10:8080/api`}
+                id="api-base-url"
+              />
+            </CardContent>
+          </Card>
+
+          {/* Authentication */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Shield className="h-5 w-5" />
+                Authentication
+              </CardTitle>
+              <CardDescription>
+                Obtain a JWT token to access protected endpoints
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <h4 className="font-semibold mb-2">Login Request</h4>
+                <CodeBlock 
+                  code={`POST /api/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "your-password"
+}`}
+                  id="api-login"
+                />
+              </div>
+              
+              <div>
+                <h4 className="font-semibold mb-2">Response</h4>
+                <CodeBlock 
+                  code={`{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": 1,
+    "username": "admin",
+    "role": "admin"
+  }
+}`}
+                  id="api-login-response"
+                  language="json"
+                />
+              </div>
+
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <p className="text-sm text-yellow-800">
+                  <strong>Important:</strong> Include the token in all subsequent requests:
+                </p>
+                <code className="text-sm bg-yellow-100 px-2 py-1 rounded mt-2 block">
+                  Authorization: Bearer &lt;token&gt;
+                </code>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Add Printer */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Plus className="h-5 w-5" />
+                Add Printer
+              </CardTitle>
+              <CardDescription>
+                Register a new printer from your POS system
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <h4 className="font-semibold mb-2">Request</h4>
+                <CodeBlock 
+                  code={`POST /api/printers
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "name": "KITCHEN",
+  "ip_address": "192.168.170.22",
+  "location": "Kitchen Station",
+  "port": 9100,
+  "protocol": "socket"
+}`}
+                  id="api-add-printer"
+                />
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <h4 className="font-semibold mb-2">Required Fields</h4>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-2">Field</th>
+                        <th className="text-left py-2">Type</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b">
+                        <td className="py-2"><code>name</code></td>
+                        <td className="py-2">string</td>
+                      </tr>
+                      <tr>
+                        <td className="py-2"><code>ip_address</code></td>
+                        <td className="py-2">string</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div>
+                  <h4 className="font-semibold mb-2">Optional Fields</h4>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-2">Field</th>
+                        <th className="text-left py-2">Default</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b">
+                        <td className="py-2"><code>location</code></td>
+                        <td className="py-2">null</td>
+                      </tr>
+                      <tr className="border-b">
+                        <td className="py-2"><code>port</code></td>
+                        <td className="py-2">9100</td>
+                      </tr>
+                      <tr>
+                        <td className="py-2"><code>protocol</code></td>
+                        <td className="py-2">"socket"</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="font-semibold mb-2">Success Response (201)</h4>
+                <CodeBlock 
+                  code={`{
+  "id": 25,
+  "name": "KITCHEN",
+  "ip_address": "192.168.170.22",
+  "cups_name": "kitchen",
+  "driver": "raw",
+  "message": "Printer added successfully"
+}`}
+                  id="api-add-response"
+                  language="json"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* cURL Example */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Terminal className="h-5 w-5" />
+                cURL Example
+              </CardTitle>
+              <CardDescription>
+                Complete example using command line
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <h4 className="font-semibold mb-2">Step 1: Login</h4>
+                <CodeBlock 
+                  code={`TOKEN=$(curl -s -X POST http://192.168.170.10:8080/api/auth/login \\
+  -H "Content-Type: application/json" \\
+  -d '{"username":"admin","password":"your-password"}' \\
+  | jq -r '.token')
+
+echo "Token: $TOKEN"`}
+                  id="curl-login"
+                />
+              </div>
+              <div>
+                <h4 className="font-semibold mb-2">Step 2: Add Printer</h4>
+                <CodeBlock 
+                  code={`curl -X POST http://192.168.170.10:8080/api/printers \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "name": "KITCHEN",
+    "ip_address": "192.168.170.22",
+    "location": "Kitchen Station",
+    "port": 9100
+  }'`}
+                  id="curl-add"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* JavaScript Example */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Code className="h-5 w-5" />
+                JavaScript Example
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CodeBlock 
+                code={`const axios = require('axios');
+
+const API_URL = 'http://192.168.170.10:8080/api';
+
+async function addPrinter(name, ipAddress, location) {
+  // Step 1: Login
+  const loginResponse = await axios.post(\`\${API_URL}/auth/login\`, {
+    username: 'admin',
+    password: 'your-password'
+  });
+  
+  const token = loginResponse.data.token;
+  
+  // Step 2: Add printer
+  const printerResponse = await axios.post(\`\${API_URL}/printers\`, {
+    name: name,
+    ip_address: ipAddress,
+    location: location,
+    port: 9100,
+    protocol: 'socket'
+  }, {
+    headers: {
+      'Authorization': \`Bearer \${token}\`,
+      'Content-Type': 'application/json'
+    }
+  });
+  
+  return printerResponse.data;
+}
+
+// Usage
+addPrinter('KITCHEN', '192.168.170.22', 'Kitchen Station')
+  .then(result => console.log('Success:', result))
+  .catch(error => console.error('Error:', error.response?.data));`}
+                id="js-example"
+                language="javascript"
+              />
+            </CardContent>
+          </Card>
+
+          {/* Python Example */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Code className="h-5 w-5" />
+                Python Example
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CodeBlock 
+                code={`import requests
+
+API_URL = 'http://192.168.170.10:8080/api'
+
+def add_printer(name, ip_address, location):
+    # Step 1: Login
+    login_response = requests.post(f'{API_URL}/auth/login', json={
+        'username': 'admin',
+        'password': 'your-password'
+    })
+    login_response.raise_for_status()
+    token = login_response.json()['token']
+    
+    # Step 2: Add printer
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json'
+    }
+    
+    printer_response = requests.post(f'{API_URL}/printers', json={
+        'name': name,
+        'ip_address': ip_address,
+        'location': location,
+        'port': 9100,
+        'protocol': 'socket'
+    }, headers=headers)
+    
+    printer_response.raise_for_status()
+    return printer_response.json()
+
+# Usage
+if __name__ == '__main__':
+    result = add_printer('KITCHEN', '192.168.170.22', 'Kitchen Station')
+    print('Printer added:', result)`}
+                id="python-example"
+                language="python"
+              />
+            </CardContent>
+          </Card>
+
+          {/* Other Endpoints */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Other Endpoints
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
+                  <Badge className="bg-green-500">GET</Badge>
+                  <code className="flex-1">/api/printers</code>
+                  <span className="text-sm text-muted-foreground">List all printers</span>
+                </div>
+                <div className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
+                  <Badge className="bg-green-500">GET</Badge>
+                  <code className="flex-1">/api/printers/:id</code>
+                  <span className="text-sm text-muted-foreground">Get single printer</span>
+                </div>
+                <div className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
+                  <Badge className="bg-blue-500">PUT</Badge>
+                  <code className="flex-1">/api/printers/:id</code>
+                  <span className="text-sm text-muted-foreground">Update printer</span>
+                </div>
+                <div className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
+                  <Badge className="bg-red-500">DELETE</Badge>
+                  <code className="flex-1">/api/printers/:id</code>
+                  <span className="text-sm text-muted-foreground">Delete printer</span>
+                </div>
+                <div className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
+                  <Badge className="bg-yellow-500">POST</Badge>
+                  <code className="flex-1">/api/printers/:id/test</code>
+                  <span className="text-sm text-muted-foreground">Test print</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Notes */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertCircle className="h-5 w-5" />
+                Important Notes
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-2">
+                <li className="flex items-start gap-2">
+                  <CheckCircle className="h-5 w-5 text-green-500 mt-0.5" />
+                  <span><strong>Token Expiration:</strong> Tokens expire after 24 hours. Use the refresh token to get a new one.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle className="h-5 w-5 text-green-500 mt-0.5" />
+                  <span><strong>Thermal Printers:</strong> Use port 9100 and protocol "socket" for thermal receipt printers.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle className="h-5 w-5 text-green-500 mt-0.5" />
+                  <span><strong>Network Printers:</strong> Use port 631 and protocol "ipp" for office printers with IPP support.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle className="h-5 w-5 text-green-500 mt-0.5" />
+                  <span><strong>CUPS Name:</strong> The system auto-generates a CUPS-safe name (lowercase, underscores).</span>
+                </li>
+              </ul>
             </CardContent>
           </Card>
         </div>
