@@ -303,9 +303,54 @@ router.put('/:id', requireRole(['admin', 'operator']), async (req, res, next) =>
             return res.status(404).json({ error: 'Printer not found' });
         }
         
+        // Check if name is being changed - need to update CUPS
+        let newCupsName = printer.cups_name;
+        if (name && name !== printer.name) {
+            // Generate new CUPS name
+            newCupsName = cupsService.generateCupsName(name);
+            
+            // Remove old printer from CUPS
+            try {
+                await cupsService.deletePrinter(printer.cups_name);
+            } catch (e) {
+                logger.warn(`Failed to remove old CUPS printer: ${e.message}`);
+            }
+            
+            // Add printer with new name
+            const cupsResult = await cupsService.addPrinter({
+                name: name,
+                ip: printer.ip_address,
+                port: printer.port || 9100,
+                protocol: printer.protocol || 'socket',
+                location: location || printer.location,
+                description: description || printer.description,
+                skipDetection: true
+            });
+            
+            if (!cupsResult.success) {
+                // Try to restore old printer
+                await cupsService.addPrinter({
+                    name: printer.name,
+                    ip: printer.ip_address,
+                    port: printer.port || 9100,
+                    protocol: printer.protocol || 'socket',
+                    location: printer.location,
+                    description: printer.description,
+                    skipDetection: true
+                });
+                return res.status(500).json({ 
+                    error: 'Failed to rename printer in CUPS',
+                    details: cupsResult.error
+                });
+            }
+            
+            newCupsName = cupsResult.cupsName;
+        }
+        
         await db.update(`
             UPDATE printers SET
                 name = COALESCE(?, name),
+                cups_name = ?,
                 dns_name = COALESCE(?, dns_name),
                 location = COALESCE(?, location),
                 description = COALESCE(?, description),
@@ -314,7 +359,8 @@ router.put('/:id', requireRole(['admin', 'operator']), async (req, res, next) =>
                 updated_at = NOW()
             WHERE id = ?
         `, [
-            name || null, 
+            name || null,
+            newCupsName,
             dns_name || null, 
             location || null, 
             description || null, 
@@ -323,7 +369,12 @@ router.put('/:id', requireRole(['admin', 'operator']), async (req, res, next) =>
             req.params.id
         ]);
         
-        await logAction('printer', 'Printer updated', { printerId: req.params.id }, req);
+        await logAction('printer', 'Printer updated', { 
+            printerId: req.params.id,
+            nameChanged: name !== printer.name,
+            oldCupsName: printer.cups_name,
+            newCupsName
+        }, req);
         
         // Emit socket event
         const io = req.app.get('io');
@@ -331,7 +382,10 @@ router.put('/:id', requireRole(['admin', 'operator']), async (req, res, next) =>
             io.emit('printer:updated', { printerId: req.params.id });
         }
         
-        res.json({ message: 'Printer updated successfully' });
+        res.json({ 
+            message: 'Printer updated successfully',
+            cups_name: newCupsName
+        });
         
     } catch (error) {
         next(error);
