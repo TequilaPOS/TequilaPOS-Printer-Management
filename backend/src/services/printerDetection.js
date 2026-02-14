@@ -3,7 +3,7 @@
 // Auto-detect printer model, capabilities, and suggest drivers
 // ===========================================
 
-const { execCommand } = require('../utils/shellExec');
+const { execCommand, execCupsCommand } = require('../utils/shellExec');
 const logger = require('../utils/logger');
 const net = require('net');
 const http = require('http');
@@ -310,7 +310,7 @@ class PrinterDetectionService {
         // Get available drivers
         let drivers = [];
         try {
-            const result = await execCommand('lpinfo -m 2>/dev/null');
+            const result = await execCupsCommand('lpinfo -m 2>/dev/null');
             if (result.success) {
                 drivers = result.stdout.split('\n').filter(line => line.trim());
             }
@@ -373,7 +373,7 @@ class PrinterDetectionService {
      */
     async getAvailableDrivers() {
         try {
-            const result = await execCommand('lpinfo -m 2>/dev/null');
+            const result = await execCupsCommand('lpinfo -m 2>/dev/null');
             if (result.success) {
                 const drivers = [];
                 const lines = result.stdout.split('\n').filter(line => line.trim());

@@ -2,7 +2,7 @@
 // CUPS Service v2 - Auto-detection + Sync
 // ===========================================
 
-const { execCommand, sanitizeForShell } = require('../utils/shellExec');
+const { execCommand, execCupsCommand, sanitizeForShell } = require('../utils/shellExec');
 const logger = require('../utils/logger');
 const printerDetection = require('./printerDetection');
 
@@ -94,7 +94,7 @@ class CupsService {
             }
             
             // Remove existing printer if exists
-            await execCommand(`lpadmin -x "${cupsName}" 2>/dev/null`).catch(() => {});
+            await execCupsCommand(`lpadmin -x "${cupsName}" 2>/dev/null`).catch(() => {});
             
             // Add printer with driver
             let cmd;
@@ -113,15 +113,15 @@ class CupsService {
                 cmd += ` -D "${safeDescription}"`;
             }
             
-            const result = await execCommand(cmd);
+            const result = await execCupsCommand(cmd);
             
             if (!result.success && result.stderr && !result.stderr.includes('deprecated')) {
                 throw new Error(result.stderr);
             }
             
             // Enable and accept jobs
-            await execCommand(`cupsenable "${cupsName}"`);
-            await execCommand(`cupsaccept "${cupsName}"`);
+            await execCupsCommand(`cupsenable "${cupsName}"`);
+            await execCupsCommand(`cupsaccept "${cupsName}"`);
             
             logger.info(`Printer ${cupsName} added successfully`);
             
@@ -148,7 +148,7 @@ class CupsService {
      */
     async removePrinter(cupsName) {
         try {
-            await execCommand(`lpadmin -x "${cupsName}"`);
+            await execCupsCommand(`lpadmin -x "${cupsName}"`);
             return { success: true };
         } catch (error) {
             return { success: false, error: error.message };
@@ -167,7 +167,7 @@ class CupsService {
      */
     async getPrinterStatus(cupsName) {
         try {
-            const result = await execCommand(`lpstat -p "${cupsName}" 2>/dev/null`);
+            const result = await execCupsCommand(`lpstat -p "${cupsName}" 2>/dev/null`);
             
             if (result.success && result.stdout) {
                 const output = result.stdout.toLowerCase();
@@ -194,7 +194,7 @@ class CupsService {
      */
     async listPrinters() {
         try {
-            const result = await execCommand('lpstat -p -d 2>/dev/null');
+            const result = await execCupsCommand('lpstat -p -d 2>/dev/null');
             const printers = [];
             
             if (result.success && result.stdout) {
@@ -246,7 +246,7 @@ class CupsService {
             
             cmd += ` "${filePath}"`;
             
-            const result = await execCommand(cmd);
+            const result = await execCupsCommand(cmd);
             
             if (result.success) {
                 // Extract job ID
@@ -306,7 +306,7 @@ class CupsService {
             // Don't use -p flag as it shows printer status instead of jobs
             // We'll filter by cupsName in code below
             
-            const result = await execCommand(cmd);
+            const result = await execCupsCommand(cmd);
             const jobs = [];
             
             if (result.success && result.stdout) {
@@ -347,7 +347,7 @@ class CupsService {
      */
     async cancelJob(jobId) {
         try {
-            await execCommand(`cancel ${jobId}`);
+            await execCupsCommand(`cancel ${jobId}`);
             return { success: true };
         } catch (error) {
             return { success: false, error: error.message };

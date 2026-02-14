@@ -10,6 +10,12 @@ const logger = require('./logger');
 const CUPS_SOCKET = '/var/run/cups/cups.sock';
 const USE_CUPS_SOCKET = fs.existsSync(CUPS_SOCKET);
 
+// Default environment with CUPS_SERVER for all commands
+const CUPS_ENV = {
+    ...process.env,
+    CUPS_SERVER: process.env.CUPS_SERVER || (USE_CUPS_SOCKET ? CUPS_SOCKET : 'localhost')
+};
+
 /**
  * Execute a shell command and return promise with output
  */
@@ -19,7 +25,10 @@ function execCommand(command, options = {}) {
         
         logger.debug(`Executing command: ${command}`);
         
-        exec(command, { timeout, ...options }, (error, stdout, stderr) => {
+        // Include CUPS_SERVER in environment for all commands
+        const env = { ...CUPS_ENV, ...(options.env || {}) };
+        
+        exec(command, { timeout, env, ...options }, (error, stdout, stderr) => {
             if (error) {
                 logger.error(`Command failed: ${command}`, { error: error.message, stderr });
                 reject({
