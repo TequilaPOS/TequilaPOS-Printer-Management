@@ -12,6 +12,9 @@ frontend/dist/
 .env.*.local
 backend/.env
 
+# Docker override (local development only)
+docker-compose.override.yml
+
 # Database
 *.db
 *.sqlite
