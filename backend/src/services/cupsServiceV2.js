@@ -355,45 +355,111 @@ class CupsService {
     }
 
     /**
-     * Print test page
+     * Print test page - auto-detects thermal vs regular printer
      */
     async printTestPage(cupsName) {
+        // Check if this looks like a thermal printer by name patterns
+        const thermalPatterns = /thermal|receipt|pos|epson|tm-|tsp|snbc|btp|star|citizen/i;
+        const isThermal = thermalPatterns.test(cupsName);
+        
+        if (isThermal) {
+            return await this.printThermalTestPage(cupsName);
+        }
+        
+        // Regular printer - use text
         const testContent = `
-╔══════════════════════════════════════════════════════════╗
-║           PRINTER MANAGEMENT SYSTEM                     ║
-║                  TEST PAGE                              ║
-╚══════════════════════════════════════════════════════════╝
+================================
+   PRINTER MANAGEMENT SYSTEM
+        TEST PAGE
+================================
 
 Printer: ${cupsName}
 Date: ${new Date().toLocaleString()}
 Server: Docker/CUPS
 
-────────────────────────────────────────────────────────────
+--------------------------------
 
-This test page confirms that your printer is configured
-correctly and can receive print jobs from the Print Server.
+This test page confirms that your
+printer is configured correctly.
 
 If you can read this page clearly:
-✓ Network connection is working
-✓ Printer driver is compatible
-✓ Print queue is functioning
+- Network connection is working
+- Printer driver is compatible
+- Print queue is functioning
 
-────────────────────────────────────────────────────────────
-
-    ████████████████████████████████████████
-    █                                      █
-    █   GRAYSCALE TEST                     █
-    █   ░░░░▒▒▒▒▓▓▓▓████                   █
-    █   Light  Mid  Dark  Black            █
-    █                                      █
-    ████████████████████████████████████████
-
-────────────────────────────────────────────────────────────
-                    Print Server v1.0
-────────────────────────────────────────────────────────────
+--------------------------------
+      Print Server v1.0
+================================
 `;
         
         return await this.printText(cupsName, testContent, 'Test Page');
+    }
+
+    /**
+     * Print thermal test page with ESC/POS commands and auto-cut
+     */
+    async printThermalTestPage(cupsName) {
+        try {
+            const timestamp = new Date().toLocaleString();
+            
+            // ESC/POS commands:
+            // \x1b\x40 = Initialize printer
+            // \x1b\x61\x01 = Center align
+            // \x1b\x45\x01 = Bold on
+            // \x1b\x45\x00 = Bold off
+            // \x1b\x61\x00 = Left align
+            // \x1b\x64\x05 = Feed 5 lines
+            // \x1d\x56\x00 = Full cut
+            
+            const escposData = Buffer.concat([
+                Buffer.from('\x1b\x40'),           // Initialize
+                Buffer.from('\x1b\x61\x01'),       // Center align
+                Buffer.from('\x1b\x45\x01'),       // Bold ON
+                Buffer.from('================================\n'),
+                Buffer.from('   PRINT SERVER TEST\n'),
+                Buffer.from('================================\n'),
+                Buffer.from('\x1b\x45\x00'),       // Bold OFF
+                Buffer.from('\n'),
+                Buffer.from(`Printer: ${cupsName}\n`),
+                Buffer.from(`Date: ${timestamp}\n`),
+                Buffer.from('\n'),
+                Buffer.from('--------------------------------\n'),
+                Buffer.from('\x1b\x61\x00'),       // Left align
+                Buffer.from('If you can read this:\n'),
+                Buffer.from('  [OK] Network working\n'),
+                Buffer.from('  [OK] CUPS configured\n'),
+                Buffer.from('  [OK] Ready to print\n'),
+                Buffer.from('--------------------------------\n'),
+                Buffer.from('\x1b\x61\x01'),       // Center align
+                Buffer.from('Print Server v1.0\n'),
+                Buffer.from('\n\n\n'),
+                Buffer.from('\x1b\x64\x14'),       // Feed 20 lines (for paper to clear cutter)
+                Buffer.from('\x1d\x56\x00'),       // Full cut
+            ]);
+            
+            // Write to temp file
+            const fs = require('fs');
+            const path = require('path');
+            const tmpFile = path.join('/tmp', `thermal_test_${Date.now()}.bin`);
+            fs.writeFileSync(tmpFile, escposData);
+            
+            // Print with raw option
+            const cmd = `lp -d "${cupsName}" -o raw "${tmpFile}"`;
+            const result = await execCupsCommand(cmd);
+            
+            // Clean up
+            fs.unlinkSync(tmpFile);
+            
+            if (result.success) {
+                const match = result.stdout.match(/request id is (\S+)/);
+                const jobId = match ? match[1] : null;
+                return { success: true, jobId, message: 'Thermal test page sent' };
+            }
+            
+            return { success: false, error: result.stderr || 'Failed to print' };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
     }
 
     /**
