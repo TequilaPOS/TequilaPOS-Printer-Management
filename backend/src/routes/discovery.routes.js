@@ -5,7 +5,7 @@
 
 const express = require('express');
 const discoveryService = require('../services/discoveryService');
-const cupsService = require('../services/cupsService');
+const cupsService = require('../services/cupsServiceV2');
 const db = require('../config/database');
 const { authenticateToken, requireRole, logAction } = require('../middleware/auth');
 const logger = require('../utils/logger');

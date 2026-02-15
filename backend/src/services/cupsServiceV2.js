@@ -35,56 +35,237 @@ class CupsService {
     }
 
     /**
-     * Get recommended driver based on printer name/model
+     * Get recommended driver based on printer name/model/manufacturer
      * Returns specific drivers for known printer types
      */
     getRecommendedDriver(name, manufacturer, model) {
         const nameUpper = (name || '').toUpperCase();
         const modelUpper = (model || '').toUpperCase();
         const mfgUpper = (manufacturer || '').toUpperCase();
+        const combined = `${nameUpper} ${modelUpper} ${mfgUpper}`;
         
-        // Epson TM-U series (Impact/Dot Matrix receipt printers)
-        if ((nameUpper.includes('TM-U') || modelUpper.includes('TM-U') || 
-             nameUpper.includes('TMU') || modelUpper.includes('TMU')) &&
-            (mfgUpper.includes('EPSON') || nameUpper.includes('EPSON'))) {
-            return {
-                driver: 'EPSON/tm-impact-receipt-rastertotmir.ppd',
-                type: 'impact',
-                name: 'EPSON TM Impact Receipt'
-            };
+        // ========================================
+        // EPSON Printers
+        // ========================================
+        if (combined.includes('EPSON') || mfgUpper.includes('EPSON') || mfgUpper.includes('SEIKO')) {
+            // TM-U series (Impact/Dot Matrix)
+            if (combined.match(/TM[-_]?U\d|TMU\d|U220|U230/i)) {
+                return {
+                    driver: 'EPSON/tm-impact-receipt-rastertotmir.ppd',
+                    type: 'impact',
+                    name: 'EPSON TM Impact Receipt'
+                };
+            }
+            
+            // TM-T series (Thermal)
+            if (combined.match(/TM[-_]?T\d|TMT\d|T88|T20|T82|T70/i)) {
+                return {
+                    driver: 'EPSON/tm-ba-thermal-rastertotmtr-203.ppd',
+                    type: 'thermal',
+                    name: 'EPSON TM Thermal (203dpi)'
+                };
+            }
+            
+            // TM-M series (Thermal mobile)
+            if (combined.match(/TM[-_]?M\d|TMM\d|M30/i)) {
+                return {
+                    driver: 'EPSON/tm-ba-thermal-rastertotmtr-203.ppd',
+                    type: 'thermal',
+                    name: 'EPSON TM Thermal (203dpi)'
+                };
+            }
+            
+            // TM-L series (Label)
+            if (combined.match(/TM[-_]?L\d|TML\d/i)) {
+                return {
+                    driver: 'EPSON/tm-ba-thermal-rastertotmtr-203.ppd',
+                    type: 'thermal',
+                    name: 'EPSON TM Thermal (203dpi)'
+                };
+            }
+            
+            // Generic Epson with keywords
+            if (combined.includes('IMPACT') || combined.includes('MATRIX') || combined.includes('DOT')) {
+                return {
+                    driver: 'EPSON/tm-impact-receipt-rastertotmir.ppd',
+                    type: 'impact',
+                    name: 'EPSON TM Impact Receipt'
+                };
+            }
+            
+            if (combined.includes('THERMAL') || combined.includes('RECEIPT') || combined.includes('POS')) {
+                return {
+                    driver: 'EPSON/tm-ba-thermal-rastertotmtr-203.ppd',
+                    type: 'thermal',
+                    name: 'EPSON TM Thermal (203dpi)'
+                };
+            }
         }
         
-        // Epson TM-T series (Thermal receipt printers)
-        if ((nameUpper.includes('TM-T') || modelUpper.includes('TM-T') ||
-             nameUpper.includes('TMT') || modelUpper.includes('TMT')) &&
-            (mfgUpper.includes('EPSON') || nameUpper.includes('EPSON'))) {
+        // ========================================
+        // STAR Micronics Printers
+        // ========================================
+        if (combined.includes('STAR') || mfgUpper.includes('STAR')) {
+            // TSP series (Thermal)
+            if (combined.match(/TSP\d|TSP[-_]/i)) {
+                return {
+                    driver: 'raw',
+                    type: 'thermal',
+                    name: 'Star TSP Thermal (RAW/ESC-POS)'
+                };
+            }
+            
+            // SP series (Impact)
+            if (combined.match(/SP[-_]?\d{3}|SP\d{3}/i)) {
+                return {
+                    driver: 'raw',
+                    type: 'impact',
+                    name: 'Star SP Impact (RAW)'
+                };
+            }
+            
+            // mPOP
+            if (combined.includes('MPOP') || combined.includes('MC-PRINT')) {
+                return {
+                    driver: 'raw',
+                    type: 'thermal',
+                    name: 'Star mPOP (RAW)'
+                };
+            }
+        }
+        
+        // ========================================
+        // CITIZEN Printers
+        // ========================================
+        if (combined.includes('CITIZEN') || mfgUpper.includes('CITIZEN')) {
+            // CT-S series (Thermal)
+            if (combined.match(/CT[-_]?S\d|CTS\d/i)) {
+                return {
+                    driver: 'raw',
+                    type: 'thermal',
+                    name: 'Citizen CT-S Thermal (RAW)'
+                };
+            }
+            
+            // CT-D series
+            if (combined.match(/CT[-_]?D\d|CTD\d/i)) {
+                return {
+                    driver: 'raw',
+                    type: 'thermal',
+                    name: 'Citizen CT-D Thermal (RAW)'
+                };
+            }
+            
+            // CL series (Label)
+            if (combined.match(/CL[-_]?\d/i)) {
+                return {
+                    driver: 'raw',
+                    type: 'thermal',
+                    name: 'Citizen CL Label (RAW)'
+                };
+            }
+        }
+        
+        // ========================================
+        // SNBC / BIXOLON Printers
+        // ========================================
+        if (combined.includes('SNBC') || combined.includes('BIXOLON') || 
+            mfgUpper.includes('SNBC') || mfgUpper.includes('BIXOLON')) {
+            // BTP series
+            if (combined.match(/BTP[-_]?\w?\d/i)) {
+                return {
+                    driver: 'raw',
+                    type: 'thermal',
+                    name: 'SNBC BTP Thermal (RAW)'
+                };
+            }
+            
+            // SRP series (Bixolon)
+            if (combined.match(/SRP[-_]?\d/i)) {
+                return {
+                    driver: 'raw',
+                    type: 'thermal',
+                    name: 'Bixolon SRP Thermal (RAW)'
+                };
+            }
+        }
+        
+        // ========================================
+        // SEWOO / LUKHAN Printers
+        // ========================================
+        if (combined.includes('SEWOO') || combined.includes('LUKHAN')) {
             return {
-                driver: 'EPSON/tm-ba-thermal-rastertotmtr-203.ppd',
+                driver: 'raw',
                 type: 'thermal',
-                name: 'EPSON TM Thermal (203dpi)'
+                name: 'Sewoo Thermal (RAW)'
             };
         }
         
-        // Generic Epson thermal
-        if (mfgUpper.includes('EPSON') && (nameUpper.includes('THERMAL') || modelUpper.includes('THERMAL'))) {
+        // ========================================
+        // Generic Thermal/POS Detection
+        // ========================================
+        const thermalKeywords = [
+            'THERMAL', 'RECEIPT', 'POS', 'TICKET', 
+            'ESCPOS', 'ESC/POS', 'ESC-POS',
+            '58MM', '80MM', '76MM', '57MM',
+            'KITCHEN', 'KIOSK'
+        ];
+        
+        for (const keyword of thermalKeywords) {
+            if (combined.includes(keyword)) {
+                return {
+                    driver: 'raw',
+                    type: 'thermal',
+                    name: 'Generic Thermal (RAW/ESC-POS)'
+                };
+            }
+        }
+        
+        // ========================================
+        // Generic Impact/Matrix Detection
+        // ========================================
+        const impactKeywords = ['IMPACT', 'MATRIX', 'DOT MATRIX', 'DOT-MATRIX', 'RIBBON'];
+        
+        for (const keyword of impactKeywords) {
+            if (combined.includes(keyword)) {
+                return {
+                    driver: 'raw',
+                    type: 'impact',
+                    name: 'Generic Impact (RAW)'
+                };
+            }
+        }
+        
+        // ========================================
+        // HP / Brother / Canon (Network printers)
+        // ========================================
+        if (mfgUpper.includes('HP') || mfgUpper.includes('HEWLETT')) {
             return {
-                driver: 'EPSON/tm-ba-thermal-rastertotmtr-203.ppd',
-                type: 'thermal',
-                name: 'EPSON TM Thermal (203dpi)'
+                driver: 'everywhere',
+                type: 'network',
+                name: 'HP (IPP Everywhere)'
             };
         }
         
-        // Generic Epson impact
-        if (mfgUpper.includes('EPSON') && (nameUpper.includes('IMPACT') || modelUpper.includes('IMPACT') ||
-            nameUpper.includes('MATRIX') || modelUpper.includes('MATRIX'))) {
+        if (mfgUpper.includes('BROTHER')) {
             return {
-                driver: 'EPSON/tm-impact-receipt-rastertotmir.ppd',
-                type: 'impact',
-                name: 'EPSON TM Impact Receipt'
+                driver: 'everywhere',
+                type: 'network',
+                name: 'Brother (IPP Everywhere)'
             };
         }
         
-        // Default: use raw (works with most thermal printers via ESC/POS)
+        if (mfgUpper.includes('CANON')) {
+            return {
+                driver: 'everywhere',
+                type: 'network',
+                name: 'Canon (IPP Everywhere)'
+            };
+        }
+        
+        // ========================================
+        // Default: RAW (works with most thermal printers)
+        // ========================================
         return {
             driver: 'raw',
             type: 'generic',
