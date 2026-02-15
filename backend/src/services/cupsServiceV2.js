@@ -35,9 +35,67 @@ class CupsService {
     }
 
     /**
+     * Get recommended driver based on printer name/model
+     * Returns specific drivers for known printer types
+     */
+    getRecommendedDriver(name, manufacturer, model) {
+        const nameUpper = (name || '').toUpperCase();
+        const modelUpper = (model || '').toUpperCase();
+        const mfgUpper = (manufacturer || '').toUpperCase();
+        
+        // Epson TM-U series (Impact/Dot Matrix receipt printers)
+        if ((nameUpper.includes('TM-U') || modelUpper.includes('TM-U') || 
+             nameUpper.includes('TMU') || modelUpper.includes('TMU')) &&
+            (mfgUpper.includes('EPSON') || nameUpper.includes('EPSON'))) {
+            return {
+                driver: 'EPSON/tm-impact-receipt-rastertotmir.ppd',
+                type: 'impact',
+                name: 'EPSON TM Impact Receipt'
+            };
+        }
+        
+        // Epson TM-T series (Thermal receipt printers)
+        if ((nameUpper.includes('TM-T') || modelUpper.includes('TM-T') ||
+             nameUpper.includes('TMT') || modelUpper.includes('TMT')) &&
+            (mfgUpper.includes('EPSON') || nameUpper.includes('EPSON'))) {
+            return {
+                driver: 'EPSON/tm-ba-thermal-rastertotmtr-203.ppd',
+                type: 'thermal',
+                name: 'EPSON TM Thermal (203dpi)'
+            };
+        }
+        
+        // Generic Epson thermal
+        if (mfgUpper.includes('EPSON') && (nameUpper.includes('THERMAL') || modelUpper.includes('THERMAL'))) {
+            return {
+                driver: 'EPSON/tm-ba-thermal-rastertotmtr-203.ppd',
+                type: 'thermal',
+                name: 'EPSON TM Thermal (203dpi)'
+            };
+        }
+        
+        // Generic Epson impact
+        if (mfgUpper.includes('EPSON') && (nameUpper.includes('IMPACT') || modelUpper.includes('IMPACT') ||
+            nameUpper.includes('MATRIX') || modelUpper.includes('MATRIX'))) {
+            return {
+                driver: 'EPSON/tm-impact-receipt-rastertotmir.ppd',
+                type: 'impact',
+                name: 'EPSON TM Impact Receipt'
+            };
+        }
+        
+        // Default: use raw (works with most thermal printers via ESC/POS)
+        return {
+            driver: 'raw',
+            type: 'generic',
+            name: 'Generic RAW'
+        };
+    }
+
+    /**
      * Add printer to CUPS with auto-detected or specified driver
      */
-    async addPrinter({ name, ip, port = 9100, protocol = 'socket', location = '', description = '', driver = null, skipDetection = false }) {
+    async addPrinter({ name, ip, port = 9100, protocol = 'socket', location = '', description = '', driver = null, skipDetection = false, manufacturer = '', model = '' }) {
         const cupsName = this.generateCupsName(name);
         const safeLocation = sanitizeForShell(location || '');
         const safeDescription = sanitizeForShell(description || '');
@@ -48,9 +106,16 @@ class CupsService {
             // Use raw driver by default for speed, or auto-detect if requested
             let selectedDriver = driver;
             let detectedInfo = null;
+            let driverInfo = null;
             
             if (!selectedDriver) {
-                if (!skipDetection) {
+                // First, check if we can recommend a driver based on name/model
+                driverInfo = this.getRecommendedDriver(name, manufacturer, model);
+                
+                if (driverInfo.type !== 'generic') {
+                    selectedDriver = driverInfo.driver;
+                    logger.info(`Recommended driver for ${name}: ${driverInfo.name} (${driverInfo.driver})`);
+                } else if (!skipDetection) {
                     try {
                         // Set a timeout for detection (5 seconds max)
                         const detectionPromise = this.detectPrinter(ip, port);
@@ -62,6 +127,15 @@ class CupsService {
                         if (detectedInfo && detectedInfo.suggestedDriver) {
                             selectedDriver = detectedInfo.suggestedDriver.driver;
                             logger.info(`Auto-detected: ${detectedInfo.manufacturer} ${detectedInfo.model}, using driver: ${selectedDriver}`);
+                        }
+                        
+                        // Check if detected info suggests a specific driver
+                        if (detectedInfo && (detectedInfo.manufacturer || detectedInfo.model)) {
+                            driverInfo = this.getRecommendedDriver(name, detectedInfo.manufacturer, detectedInfo.model);
+                            if (driverInfo.type !== 'generic') {
+                                selectedDriver = driverInfo.driver;
+                                logger.info(`Using detected model driver: ${driverInfo.name}`);
+                            }
                         }
                     } catch (e) {
                         logger.info(`Detection skipped or timed out: ${e.message}`);

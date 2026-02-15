@@ -235,6 +235,8 @@ router.post('/', requireRole(['admin', 'operator']), async (req, res, next) => {
             location,
             description: description || `${manufacturer || ''} ${model || ''}`.trim(),
             driver,
+            manufacturer,  // Pass manufacturer for driver detection
+            model,         // Pass model for driver detection
             skipDetection: skipDetection !== false  // Skip unless explicitly set to false
         });
         
