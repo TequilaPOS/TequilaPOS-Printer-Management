@@ -796,7 +796,15 @@ class DiscoveryService {
         // Check if it's a network adapter (UB-E04, C32C8, etc.) - not the actual printer
         const modelText = (result.info.model || '').toUpperCase();
         const descText = (result.info.description || '').toUpperCase();
-        const isNetworkAdapter = /UB-[A-Z]\d|C32C8|PRINT SERVER|NETWORK ADAPTER|ETHERNET ADAPTER/i.test(modelText + ' ' + descText);
+        const combinedText = modelText + ' ' + descText;
+        
+        // Known printer models that have "Print Server" in description but are NOT adapters
+        const knownPrinterModels = /TM-T20|TM-T88|TM-M30|TM-T82|TM-P80|TSP100|TSP143|TSP650|TSP700/i;
+        const hasKnownModel = knownPrinterModels.test(combinedText);
+        
+        // Adapter patterns - but exclude if we detected a known printer model
+        const adapterPatterns = /UB-[A-Z]\d|C32C8|NETWORK ADAPTER|ETHERNET ADAPTER/i;
+        const isNetworkAdapter = !hasKnownModel && adapterPatterns.test(combinedText);
         
         if (isNetworkAdapter) {
             result.isNetworkAdapter = true;
