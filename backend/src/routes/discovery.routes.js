@@ -431,8 +431,9 @@ router.post('/add', async (req, res, next) => {
         }
 
         // Add to CUPS using cupsServiceV2
+        let cupsResult;
         try {
-            const cupsResult = await cupsService.addPrinter({
+            cupsResult = await cupsService.addPrinter({
                 name: cupsName,
                 ip,
                 port,
@@ -460,6 +461,9 @@ router.post('/add', async (req, res, next) => {
             });
         }
 
+        // Get the actual CUPS name from result
+        const finalCupsName = cupsResult?.cupsName || cupsName;
+
         // Add to database
         const printerTypeValue = isImpact ? 'impact' : (isThermal ? 'thermal' : 'network');
         const snmpEnabled = (isThermal || isImpact) ? 0 : 1; // Disable SNMP for POS printers
@@ -475,7 +479,7 @@ router.post('/add', async (req, res, next) => {
             port,
             protocol,
             printerTypeValue,
-            cupsName,
+            finalCupsName,
             finalManufacturer || '',
             model || name,
             location,
@@ -488,14 +492,17 @@ router.post('/add', async (req, res, next) => {
             printer_id: result.insertId,
             ip,
             name,
-            protocol
+            cups_name: finalCupsName,
+            driver: finalDriver,
+            printerType: printerTypeValue
         }, req);
 
         res.status(201).json({
             id: result.insertId,
             name,
             ip_address: ip,
-            cups_name: cupsName,
+            cups_name: finalCupsName,
+            driver: finalDriver,
             protocol,
             message: 'Printer added successfully'
         });
