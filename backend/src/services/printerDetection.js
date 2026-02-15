@@ -10,9 +10,25 @@ const http = require('http');
 
 class PrinterDetectionService {
 
+    constructor() {
+        // Cache de drivers disponibles (evita llamar lpinfo -m cada vez)
+        this.driversCache = null;
+        this.driversCacheTime = 0;
+        this.CACHE_TTL = 10 * 60 * 1000; // 10 minutos
+    }
+
+    /**
+     * Verificar si es un adaptador de red (no impresora real)
+     */
+    isNetworkAdapter(model) {
+        if (!model) return false;
+        const adapterPatterns = /UB-[A-Z]\d|PRINT SERVER|NETWORK ADAPTER|ETHERNET|C32C8/i;
+        return adapterPatterns.test(model);
+    }
+
     /**
      * Detect printer info by IP address
-     * Tries multiple methods: HTTP, PJL, SNMP, ESC/POS
+     * Tries multiple methods: ESC/POS, SNMP, HTTP, PJL, IPP
      */
     async detectPrinter(ip, port = 9100) {
         logger.info(`Detecting printer at ${ip}:${port}`);
@@ -47,7 +63,7 @@ class PrinterDetectionService {
                 const snmpInfo = await this.detectViaSNMP(ip);
                 if (snmpInfo.detected) {
                     // If SNMP returns network adapter (UB-E04, etc.), keep trying other methods
-                    if (snmpInfo.model && snmpInfo.model.match(/UB-[A-Z]\d|PRINT SERVER|NETWORK/i)) {
+                    if (this.isNetworkAdapter(snmpInfo.model)) {
                         logger.info(`SNMP detected network adapter: ${snmpInfo.model}, continuing detection...`);
                         result.manufacturer = snmpInfo.manufacturer;
                         // Don't set model, let other methods find the real printer
@@ -62,8 +78,8 @@ class PrinterDetectionService {
             if (!result.detected || !result.model) {
                 const httpInfo = await this.detectViaHTTP(ip);
                 if (httpInfo.detected) {
-                    // HTTP might have better model info
-                    if (httpInfo.model && !httpInfo.model.match(/UB-[A-Z]\d|PRINT SERVER|NETWORK/i)) {
+                    // HTTP might have better model info - skip if it's network adapter
+                    if (httpInfo.model && !this.isNetworkAdapter(httpInfo.model)) {
                         Object.assign(result, httpInfo);
                     }
                 }
@@ -328,6 +344,19 @@ class PrinterDetectionService {
                 
                 const endpoint = endpoints[endpointIndex];
                 const req = http.get(`http://${ip}${endpoint}`, { timeout: 3000 }, (res) => {
+                    // Si requiere autenticación (401/403), abandonar HTTP
+                    if (res.statusCode === 401 || res.statusCode === 403) {
+                        logger.info(`HTTP ${res.statusCode} at ${ip}${endpoint} - requires auth, skipping`);
+                        resolve(result);
+                        return;
+                    }
+                    
+                    // Si es redirect, intentar seguirlo una vez
+                    if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                        tryEndpoint(endpointIndex + 1);
+                        return;
+                    }
+                    
                     let data = '';
                     res.on('data', chunk => data += chunk);
                     res.on('end', () => {
@@ -776,9 +805,18 @@ class PrinterDetectionService {
     }
 
     /**
-     * Get list of available drivers
+     * Get list of available drivers (with cache)
+     * Uses local CUPS drivers, NOT internet
      */
     async getAvailableDrivers() {
+        const now = Date.now();
+        
+        // Usar cache si está válido (evita llamar lpinfo -m cada vez)
+        if (this.driversCache && (now - this.driversCacheTime) < this.CACHE_TTL) {
+            logger.debug(`Using cached drivers (${this.driversCache.length} drivers)`);
+            return this.driversCache;
+        }
+        
         try {
             const result = await execCupsCommand('lpinfo -m 2>/dev/null');
             if (result.success) {
@@ -795,6 +833,11 @@ class PrinterDetectionService {
                         isPostScript: path.includes('ps') || path.includes('postscript')
                     });
                 }
+                
+                // Guardar en cache
+                this.driversCache = drivers;
+                this.driversCacheTime = now;
+                logger.info(`Cached ${drivers.length} local drivers from lpinfo -m`);
                 
                 return drivers;
             }
