@@ -288,7 +288,10 @@ router.post('/', requireRole(['admin', 'operator']), async (req, res, next) => {
         
         // Determine driver based on printerType selection
         let selectedDriver = driver;
+        let shouldDetect = false;
+        
         if (!selectedDriver && printerType !== 'auto') {
+            // User manually selected type - use that
             switch (printerType) {
                 case 'thermal':
                     selectedDriver = 'raw';  // ESC/POS compatible
@@ -308,9 +311,13 @@ router.post('/', requireRole(['admin', 'operator']), async (req, res, next) => {
                     break;
             }
             logger.info(`Manual printerType selection: ${printerType} → driver: ${selectedDriver}`);
+        } else if (printerType === 'auto') {
+            // Auto-detect mode: run detection to find real model
+            shouldDetect = true;
+            logger.info('Auto-detect mode enabled, will detect printer model');
         }
         
-        // Add to CUPS (skip slow detection by default)
+        // Add to CUPS
         const cupsResult = await cupsService.addPrinter({
             name,
             ip: ip_address,
@@ -321,7 +328,7 @@ router.post('/', requireRole(['admin', 'operator']), async (req, res, next) => {
             driver: selectedDriver,
             manufacturer,  // Pass manufacturer for driver detection
             model,         // Pass model for driver detection
-            skipDetection: selectedDriver ? true : (skipDetection !== false)  // Skip if we already have driver
+            skipDetection: !shouldDetect  // Run detection if auto mode
         });
         
         if (!cupsResult.success) {
