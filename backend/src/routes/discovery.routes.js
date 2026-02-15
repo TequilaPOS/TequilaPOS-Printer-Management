@@ -546,6 +546,17 @@ router.post('/add-all', async (req, res, next) => {
                     continue;
                 }
 
+                // Skip printers that require manual type selection
+                if (printer.requiresManualType || printer.isNetworkAdapter) {
+                    results.skipped.push({
+                        ip: printer.ip,
+                        reason: 'Requires manual type selection (Impact/Thermal). Use Manual Add.',
+                        requiresManualType: true
+                    });
+                    logger.info(`Add-all: Skipping ${printer.ip} - requires manual type selection`);
+                    continue;
+                }
+
                 const name = printer.recommended?.name || `Printer_${printer.ip.replace(/\./g, '_')}`;
                 const protocol = printer.recommended?.protocol || 'socket';
                 const port = printer.recommended?.port || 9100;

@@ -213,16 +213,35 @@ export default function Discovery() {
     try {
       const res = await api.post('/discovery/add-all', { printers: toAdd })
       
-      toast.success(`Added ${res.data.results.added.length} printers`)
+      const { added, failed, skipped } = res.data.results
       
-      if (res.data.results.failed.length > 0) {
-        toast.warning(`${res.data.results.failed.length} failed to add`)
+      if (added.length > 0) {
+        toast.success(`Added ${added.length} printers`)
+      }
+      
+      if (failed.length > 0) {
+        toast.error(`${failed.length} failed to add`)
+      }
+      
+      // Show specific message for manual type required
+      const manualRequired = skipped.filter(s => s.requiresManualType)
+      if (manualRequired.length > 0) {
+        toast.warning(
+          `${manualRequired.length} printer(s) require manual type selection. Use "Manual Add" button.`,
+          { duration: 5000 }
+        )
+      }
+      
+      // Show other skipped
+      const otherSkipped = skipped.filter(s => !s.requiresManualType)
+      if (otherSkipped.length > 0) {
+        toast.info(`${otherSkipped.length} already configured`)
       }
 
       queryClient.invalidateQueries(['printers'])
       
       // Remove added printers from results
-      const addedIPs = new Set(res.data.results.added.map(p => p.ip))
+      const addedIPs = new Set(added.map(p => p.ip))
       setScanResults(prev => prev.filter(p => !addedIPs.has(p.ip)))
       setSelectedPrinters(new Set())
 
