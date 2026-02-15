@@ -202,6 +202,172 @@ class CupsService {
         }
         
         // ========================================
+        // Additional Thermal Printer Brands
+        // ========================================
+        
+        // Xprinter
+        if (combined.includes('XPRINTER') || combined.match(/XP[-_]?\d/i)) {
+            return {
+                driver: 'raw',
+                type: 'thermal',
+                name: 'Xprinter Thermal (RAW)'
+            };
+        }
+        
+        // Rongta
+        if (combined.includes('RONGTA') || combined.match(/RP[-_]?\d/i)) {
+            return {
+                driver: 'raw',
+                type: 'thermal',
+                name: 'Rongta Thermal (RAW)'
+            };
+        }
+        
+        // Munbyn
+        if (combined.includes('MUNBYN') || combined.match(/ITPP\d/i)) {
+            return {
+                driver: 'raw',
+                type: 'thermal',
+                name: 'Munbyn Thermal (RAW)'
+            };
+        }
+        
+        // Posiflex
+        if (combined.includes('POSIFLEX') || combined.match(/PP[-_]?\d/i)) {
+            return {
+                driver: 'raw',
+                type: 'thermal',
+                name: 'Posiflex Thermal (RAW)'
+            };
+        }
+        
+        // Partner Tech
+        if (combined.includes('PARTNER') && (combined.includes('RP') || combined.includes('PRINTER'))) {
+            return {
+                driver: 'raw',
+                type: 'thermal',
+                name: 'Partner Tech Thermal (RAW)'
+            };
+        }
+        
+        // Bematech / Elgin
+        if (combined.includes('BEMATECH') || combined.includes('ELGIN') || combined.match(/MP[-_]?\d{3,4}/i)) {
+            return {
+                driver: 'raw',
+                type: 'thermal',
+                name: 'Bematech Thermal (RAW)'
+            };
+        }
+        
+        // Custom (Italian brand)
+        if (combined.includes('CUSTOM') && (combined.includes('KUBE') || combined.includes('TG') || combined.includes('Q3'))) {
+            return {
+                driver: 'raw',
+                type: 'thermal',
+                name: 'Custom Thermal (RAW)'
+            };
+        }
+        
+        // Sam4s (Ellix, Giant)
+        if (combined.includes('SAM4S') || combined.includes('ELLIX') || combined.match(/GIANT[-_]?\d/i)) {
+            return {
+                driver: 'raw',
+                type: 'thermal',
+                name: 'Sam4s Thermal (RAW)'
+            };
+        }
+        
+        // Hoin / Everycom
+        if (combined.includes('HOIN') || combined.includes('EVERYCOM') || combined.match(/HOP[-_]?\w?\d/i)) {
+            return {
+                driver: 'raw',
+                type: 'thermal',
+                name: 'Hoin Thermal (RAW)'
+            };
+        }
+        
+        // Goojprt
+        if (combined.includes('GOOJPRT') || combined.match(/JP[-_]?\d{2,3}/i)) {
+            return {
+                driver: 'raw',
+                type: 'thermal',
+                name: 'Goojprt Thermal (RAW)'
+            };
+        }
+        
+        // AURES (Posligne, ODP)
+        if (combined.includes('AURES') || combined.includes('POSLIGNE') || combined.includes('ODP')) {
+            return {
+                driver: 'raw',
+                type: 'thermal',
+                name: 'AURES Thermal (RAW)'
+            };
+        }
+        
+        // Posx / Posbank
+        if (combined.includes('POSX') || combined.includes('POSBANK')) {
+            return {
+                driver: 'raw',
+                type: 'thermal',
+                name: 'POS-X Thermal (RAW)'
+            };
+        }
+        
+        // Tysso
+        if (combined.includes('TYSSO') || combined.match(/PRP[-_]?\d/i)) {
+            return {
+                driver: 'raw',
+                type: 'thermal',
+                name: 'Tysso Thermal (RAW)'
+            };
+        }
+        
+        // NCR
+        if (combined.includes('NCR') && (combined.includes('REALPOS') || combined.includes('7197') || combined.includes('7199'))) {
+            return {
+                driver: 'raw',
+                type: 'thermal',
+                name: 'NCR Thermal (RAW)'
+            };
+        }
+        
+        // IBM / Toshiba (SureMark)
+        if ((combined.includes('IBM') || combined.includes('TOSHIBA')) && combined.includes('SUREMARK')) {
+            return {
+                driver: 'raw',
+                type: 'thermal',
+                name: 'IBM SureMark (RAW)'
+            };
+        }
+        
+        // Zebra (Receipt/Label)
+        if (combined.includes('ZEBRA') && (combined.match(/ZD\d|ZT\d|ZQ\d/i) || combined.includes('GK') || combined.includes('GC'))) {
+            return {
+                driver: 'raw',
+                type: 'thermal',
+                name: 'Zebra Thermal (RAW)'
+            };
+        }
+        
+        // Honeywell (Intermec, Datamax)
+        if (combined.includes('HONEYWELL') || combined.includes('INTERMEC') || combined.includes('DATAMAX')) {
+            return {
+                driver: 'raw',
+                type: 'thermal',
+                name: 'Honeywell Thermal (RAW)'
+            };
+        }
+        
+        // TSC
+        if (combined.includes('TSC') && (combined.match(/TE\d|TDP\d|TC\d/i) || combined.includes('ALPHA'))) {
+            return {
+                driver: 'raw',
+                type: 'thermal',
+                name: 'TSC Thermal (RAW)'
+            };
+        }
+        
+        // ========================================
         // Generic Thermal/POS Detection
         // ========================================
         const thermalKeywords = [
