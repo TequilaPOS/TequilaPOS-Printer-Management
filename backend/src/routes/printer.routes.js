@@ -15,12 +15,71 @@ const router = express.Router();
 router.use(authenticateToken);
 
 /**
+ * Sync database with CUPS - remove printers that don't exist in CUPS
+ */
+async function syncWithCUPS() {
+    try {
+        // Get all printers from CUPS
+        const cupsPrinters = await cupsService.listPrinters();
+        const cupsNames = new Set(cupsPrinters.map(p => p.name));
+        
+        // Get all printers from database
+        const dbPrinters = await db.query('SELECT id, name, cups_name FROM printers');
+        
+        const removed = [];
+        for (const printer of dbPrinters) {
+            if (printer.cups_name && !cupsNames.has(printer.cups_name)) {
+                // Printer exists in DB but not in CUPS - remove from DB
+                logger.info(`Sync: Removing printer "${printer.name}" (${printer.cups_name}) - not found in CUPS`);
+                await db.update('DELETE FROM printers WHERE id = ?', [printer.id]);
+                removed.push({ id: printer.id, name: printer.name, cups_name: printer.cups_name });
+            }
+        }
+        
+        return { synced: true, removed, cupsCount: cupsPrinters.length, dbCount: dbPrinters.length - removed.length };
+    } catch (error) {
+        logger.error('Sync with CUPS failed:', error);
+        return { synced: false, error: error.message };
+    }
+}
+
+/**
+ * POST /api/printers/sync
+ * Manually sync database with CUPS
+ */
+router.post('/sync', requireRole(['admin']), async (req, res, next) => {
+    try {
+        const result = await syncWithCUPS();
+        
+        if (result.removed && result.removed.length > 0) {
+            await logAction('printer', 'Sync: Removed orphaned printers', { 
+                removed: result.removed 
+            }, req);
+        }
+        
+        res.json({
+            message: result.removed?.length > 0 
+                ? `Synced: Removed ${result.removed.length} orphaned printer(s)`
+                : 'All printers are in sync',
+            ...result
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
  * GET /api/printers
  * List all printers with current status
  */
 router.get('/', async (req, res, next) => {
     try {
-        const { status, location, search } = req.query;
+        const { status, location, search, autoSync } = req.query;
+        
+        // Auto-sync on each request if enabled (default: true for admins)
+        if (autoSync !== 'false') {
+            await syncWithCUPS();
+        }
         
         let sql = `
             SELECT p.*, u.name as created_by_name,
