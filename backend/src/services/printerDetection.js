@@ -12,7 +12,7 @@ class PrinterDetectionService {
 
     /**
      * Detect printer info by IP address
-     * Tries multiple methods: HTTP, PJL, SNMP
+     * Tries multiple methods: HTTP, PJL, SNMP, ESC/POS
      */
     async detectPrinter(ip, port = 9100) {
         logger.info(`Detecting printer at ${ip}:${port}`);
@@ -35,22 +35,41 @@ class PrinterDetectionService {
         };
 
         try {
-            // 1. Try SNMP detection first (most reliable for receipt printers)
-            const snmpInfo = await this.detectViaSNMP(ip);
-            if (snmpInfo.detected) {
-                Object.assign(result, snmpInfo);
-                logger.info(`SNMP detected: ${snmpInfo.manufacturer} ${snmpInfo.model}`);
+            // 1. Try ESC/POS detection first (gets real printer model, not network adapter)
+            const escposInfo = await this.detectViaESCPOS(ip, port);
+            if (escposInfo.detected) {
+                Object.assign(result, escposInfo);
+                logger.info(`ESC/POS detected: ${escposInfo.manufacturer} ${escposInfo.model}`);
             }
 
-            // 2. Try HTTP detection (most printers have web interface)
+            // 2. Try SNMP detection (but may return network adapter name)
             if (!result.detected) {
-                const httpInfo = await this.detectViaHTTP(ip);
-                if (httpInfo.detected) {
-                    Object.assign(result, httpInfo);
+                const snmpInfo = await this.detectViaSNMP(ip);
+                if (snmpInfo.detected) {
+                    // If SNMP returns network adapter (UB-E04, etc.), keep trying other methods
+                    if (snmpInfo.model && snmpInfo.model.match(/UB-[A-Z]\d|PRINT SERVER|NETWORK/i)) {
+                        logger.info(`SNMP detected network adapter: ${snmpInfo.model}, continuing detection...`);
+                        result.manufacturer = snmpInfo.manufacturer;
+                        // Don't set model, let other methods find the real printer
+                    } else {
+                        Object.assign(result, snmpInfo);
+                        logger.info(`SNMP detected: ${snmpInfo.manufacturer} ${snmpInfo.model}`);
+                    }
                 }
             }
 
-            // 3. Try PJL detection (HP, Brother, etc.)
+            // 3. Try HTTP detection (most printers have web interface)
+            if (!result.detected || !result.model) {
+                const httpInfo = await this.detectViaHTTP(ip);
+                if (httpInfo.detected) {
+                    // HTTP might have better model info
+                    if (httpInfo.model && !httpInfo.model.match(/UB-[A-Z]\d|PRINT SERVER|NETWORK/i)) {
+                        Object.assign(result, httpInfo);
+                    }
+                }
+            }
+
+            // 4. Try PJL detection (HP, Brother, etc.)
             if (!result.detected) {
                 const pjlInfo = await this.detectViaPJL(ip, port);
                 if (pjlInfo.detected) {
@@ -58,7 +77,7 @@ class PrinterDetectionService {
                 }
             }
 
-            // 4. Try IPP detection
+            // 5. Try IPP detection
             const ippInfo = await this.detectViaIPP(ip);
             if (ippInfo.supportsIPP) {
                 result.supportsIPP = true;
@@ -69,7 +88,7 @@ class PrinterDetectionService {
                 }
             }
 
-            // 5. Suggest driver based on detected info
+            // 6. Suggest driver based on detected info
             if (result.model || result.manufacturer) {
                 result.suggestedDriver = await this.suggestDriver(result);
                 result.detected = true;
@@ -78,7 +97,7 @@ class PrinterDetectionService {
                 }
             }
 
-            // 6. Try to get toner levels via SNMP
+            // 7. Try to get toner levels via SNMP
             const tonerInfo = await this.getTonerViaSNMP(ip);
             if (tonerInfo) {
                 result.tonerLevels = tonerInfo;
@@ -89,6 +108,132 @@ class PrinterDetectionService {
         }
 
         return result;
+    }
+
+    /**
+     * Detect printer via ESC/POS commands on port 9100
+     * Gets the REAL printer model (not the network adapter)
+     */
+    async detectViaESCPOS(ip, port = 9100) {
+        return new Promise((resolve) => {
+            const result = { detected: false };
+            
+            const socket = new net.Socket();
+            socket.setTimeout(3000);
+            
+            let responseData = Buffer.alloc(0);
+            
+            socket.connect(port, ip, () => {
+                // Send ESC/POS commands to get printer info:
+                // GS I 1 (0x1D 0x49 0x01) = Get Printer ID (model)
+                // GS I 2 (0x1D 0x49 0x02) = Get Type ID
+                // GS I 3 (0x1D 0x49 0x03) = Get ROM version
+                // GS I 65 (0x1D 0x49 0x41) = Get printer model name (Epson)
+                // GS I 66 (0x1D 0x49 0x42) = Get manufacturer (Epson)
+                
+                const commands = Buffer.concat([
+                    Buffer.from([0x1D, 0x49, 0x41]),  // GS I A - Model name
+                    Buffer.from([0x1D, 0x49, 0x42]),  // GS I B - Manufacturer
+                    Buffer.from([0x1D, 0x49, 0x01]),  // GS I 1 - Printer ID
+                    Buffer.from([0x1D, 0x49, 0x03]),  // GS I 3 - ROM version
+                ]);
+                
+                socket.write(commands);
+            });
+            
+            socket.on('data', (chunk) => {
+                responseData = Buffer.concat([responseData, chunk]);
+                
+                // Try to parse response after receiving some data
+                setTimeout(() => {
+                    socket.destroy();
+                }, 500);
+            });
+            
+            socket.on('close', () => {
+                if (responseData.length > 0) {
+                    // Parse ESC/POS response
+                    const responseStr = responseData.toString('utf8').replace(/[\x00-\x1F]/g, ' ').trim();
+                    const responseHex = responseData.toString('hex');
+                    
+                    logger.debug(`ESC/POS response: ${responseStr} (hex: ${responseHex})`);
+                    
+                    // Look for Epson TM patterns in response
+                    const tmMatch = responseStr.match(/TM[-_]?([UTMSLP]\d{2,3}[A-Z]?)/i);
+                    if (tmMatch) {
+                        result.detected = true;
+                        result.manufacturer = 'Epson';
+                        result.model = `TM-${tmMatch[1].toUpperCase()}`;
+                        
+                        // Determine type based on model
+                        if (result.model.match(/TM-?U/i)) {
+                            result.printerType = 'impact';
+                        } else {
+                            result.printerType = 'thermal';
+                        }
+                    }
+                    
+                    // Look for EPSON in response
+                    if (!result.detected && responseStr.toUpperCase().includes('EPSON')) {
+                        result.detected = true;
+                        result.manufacturer = 'Epson';
+                        
+                        // Try to find model
+                        const modelMatch = responseStr.match(/TM-?\w+\d+/i);
+                        if (modelMatch) {
+                            result.model = modelMatch[0].toUpperCase();
+                        }
+                    }
+                    
+                    // Look for Star patterns
+                    if (!result.detected && (responseStr.includes('STAR') || responseStr.match(/TSP\d|SP\d{3}/i))) {
+                        result.detected = true;
+                        result.manufacturer = 'Star';
+                        const modelMatch = responseStr.match(/TSP\d+|SP\d{3}/i);
+                        if (modelMatch) {
+                            result.model = modelMatch[0].toUpperCase();
+                        }
+                        result.printerType = 'thermal';
+                    }
+                    
+                    // Look for Citizen patterns
+                    if (!result.detected && responseStr.match(/CT-?[SD]\d|CITIZEN/i)) {
+                        result.detected = true;
+                        result.manufacturer = 'Citizen';
+                        const modelMatch = responseStr.match(/CT-?[SD]\d+/i);
+                        if (modelMatch) {
+                            result.model = modelMatch[0].toUpperCase();
+                        }
+                        result.printerType = 'thermal';
+                    }
+                    
+                    // Check raw bytes for Epson printer type indicators
+                    if (!result.detected && responseData.length >= 2) {
+                        // Byte patterns from Epson GS I responses
+                        const byte1 = responseData[0];
+                        const byte2 = responseData.length > 1 ? responseData[1] : 0;
+                        
+                        // Epson TM-U series typically returns specific byte patterns
+                        if (byte1 === 0x5F || byte1 === 0x2D) {  // Common TM response prefix
+                            result.detected = true;
+                            result.manufacturer = 'Epson';
+                            result.printerType = 'thermal';  // Default to thermal
+                        }
+                    }
+                }
+                
+                resolve(result);
+            });
+            
+            socket.on('timeout', () => {
+                socket.destroy();
+                resolve(result);
+            });
+            
+            socket.on('error', () => {
+                resolve(result);
+            });
+        });
     }
 
     /**
@@ -172,21 +317,60 @@ class PrinterDetectionService {
         return new Promise((resolve) => {
             const result = { detected: false };
             
-            const req = http.get(`http://${ip}/`, { timeout: 5000 }, (res) => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => {
-                    try {
-                        // Parse HTML for printer info
-                        const titleMatch = data.match(/<title[^>]*>([^<]+)</i);
-                        if (titleMatch) {
-                            const title = titleMatch[1];
+            // Try multiple endpoints for Epson printers
+            const endpoints = ['/', '/PRESENTATION/HTML/TOP/INDEX.HTML', '/webconfig.html'];
+            
+            const tryEndpoint = (endpointIndex) => {
+                if (endpointIndex >= endpoints.length) {
+                    resolve(result);
+                    return;
+                }
+                
+                const endpoint = endpoints[endpointIndex];
+                const req = http.get(`http://${ip}${endpoint}`, { timeout: 3000 }, (res) => {
+                    let data = '';
+                    res.on('data', chunk => data += chunk);
+                    res.on('end', () => {
+                        try {
+                            // Parse HTML for printer info
+                            const titleMatch = data.match(/<title[^>]*>([^<]+)</i);
+                            const fullContent = (titleMatch ? titleMatch[1] : '') + ' ' + data;
+                            
+                            // Look for TM printer models in content (real printer, not adapter)
+                            const tmModelMatch = fullContent.match(/TM[-_]?([UTMLSP]\d{2,3}[A-Z]*)/i);
+                            if (tmModelMatch) {
+                                result.detected = true;
+                                result.manufacturer = 'Epson';
+                                result.model = `TM-${tmModelMatch[1].toUpperCase()}`;
+                                result.webInterface = `http://${ip}/`;
+                                
+                                // Determine type
+                                if (result.model.match(/TM-?U/i)) {
+                                    result.printerType = 'impact';
+                                } else {
+                                    result.printerType = 'thermal';
+                                }
+                                
+                                resolve(result);
+                                return;
+                            }
+                            
+                            // Look for Star TSP models
+                            const tspMatch = fullContent.match(/TSP\d{2,3}/i);
+                            if (tspMatch) {
+                                result.detected = true;
+                                result.manufacturer = 'Star';
+                                result.model = tspMatch[0].toUpperCase();
+                                result.printerType = 'thermal';
+                                resolve(result);
+                                return;
+                            }
                             
                             // HP printers
-                            if (title.includes('HP') || data.includes('/hp/device/')) {
+                            if (fullContent.includes('HP') || data.includes('/hp/device/')) {
                                 result.detected = true;
                                 result.manufacturer = 'HP';
-                                const modelMatch = title.match(/HP\s+([^\s&<]+(?:\s+[^\s&<]+)?)/i);
+                                const modelMatch = fullContent.match(/HP\s+([^\s&<]+(?:\s+[^\s&<]+)?)/i);
                                 if (modelMatch) {
                                     result.model = modelMatch[1].trim();
                                 }
@@ -194,63 +378,76 @@ class PrinterDetectionService {
                             }
                             
                             // Brother printers
-                            else if (title.includes('Brother') || data.includes('Brother')) {
+                            else if (fullContent.includes('Brother')) {
                                 result.detected = true;
                                 result.manufacturer = 'Brother';
-                                const modelMatch = title.match(/Brother\s+([^\s&<]+)/i);
+                                const modelMatch = fullContent.match(/Brother\s+([^\s&<]+)/i);
                                 if (modelMatch) {
                                     result.model = modelMatch[1];
                                 }
                             }
                             
                             // Canon printers
-                            else if (title.includes('Canon') || data.includes('Canon')) {
+                            else if (fullContent.includes('Canon')) {
                                 result.detected = true;
                                 result.manufacturer = 'Canon';
                             }
                             
-                            // Epson printers
-                            else if (title.includes('EPSON') || data.includes('EPSON')) {
+                            // Epson printers (generic, no TM model found)
+                            else if (fullContent.includes('EPSON')) {
                                 result.detected = true;
                                 result.manufacturer = 'Epson';
+                                // Don't set model if it's just the network adapter
                             }
                             
                             // Xerox printers
-                            else if (title.includes('Xerox') || data.includes('Xerox')) {
+                            else if (fullContent.includes('Xerox')) {
                                 result.detected = true;
                                 result.manufacturer = 'Xerox';
                             }
                             
                             // Lexmark printers
-                            else if (title.includes('Lexmark') || data.includes('Lexmark')) {
+                            else if (fullContent.includes('Lexmark')) {
                                 result.detected = true;
                                 result.manufacturer = 'Lexmark';
                             }
                             
                             // Ricoh printers
-                            else if (title.includes('Ricoh') || data.includes('Ricoh')) {
+                            else if (fullContent.includes('Ricoh')) {
                                 result.detected = true;
                                 result.manufacturer = 'Ricoh';
                             }
                             
                             // Kyocera printers
-                            else if (title.includes('Kyocera') || data.includes('KYOCERA')) {
+                            else if (fullContent.includes('Kyocera') || fullContent.includes('KYOCERA')) {
                                 result.detected = true;
                                 result.manufacturer = 'Kyocera';
                             }
+                            
+                            // If detected but no model, try next endpoint
+                            if (!result.model && endpointIndex < endpoints.length - 1) {
+                                tryEndpoint(endpointIndex + 1);
+                                return;
+                            }
+                            
+                        } catch (e) {
+                            // Ignore parse errors
                         }
-                    } catch (e) {
-                        // Ignore parse errors
-                    }
-                    resolve(result);
+                        resolve(result);
+                    });
                 });
-            });
+                
+                req.on('error', () => {
+                    // Try next endpoint on error
+                    tryEndpoint(endpointIndex + 1);
+                });
+                req.on('timeout', () => {
+                    req.destroy();
+                    tryEndpoint(endpointIndex + 1);
+                });
+            };
             
-            req.on('error', () => resolve(result));
-            req.on('timeout', () => {
-                req.destroy();
-                resolve(result);
-            });
+            tryEndpoint(0);
         });
     }
 
