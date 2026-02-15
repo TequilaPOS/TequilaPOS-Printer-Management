@@ -59,6 +59,40 @@ export default function Discovery() {
     }
   }, [networkData, networkRange])
 
+  // Check for active scan on mount and restore results
+  useEffect(() => {
+    const checkActiveScan = async () => {
+      try {
+        const res = await api.get('/discovery/status')
+        const progress = res.data
+        
+        if (progress.status === 'scanning' || progress.status === 'quick-scan' || progress.status === 'thermal-scan') {
+          // Scan is active, restore state
+          setScanning(true)
+          setScanType(progress.status === 'quick-scan' ? 'quick' : progress.status === 'thermal-scan' ? 'thermal' : 'full')
+          setScanResults([...progress.found])
+          
+          // Start polling
+          pollInterval.current = setInterval(pollStatus, 1000)
+        } else if (progress.status === 'completed' && progress.found?.length > 0) {
+          // Scan completed but results available
+          setScanResults([...progress.found])
+        }
+      } catch (err) {
+        console.error('Error checking scan status:', err)
+      }
+    }
+    
+    checkActiveScan()
+    
+    // Cleanup on unmount
+    return () => {
+      if (pollInterval.current) {
+        clearInterval(pollInterval.current)
+      }
+    }
+  }, [])
+
   // Poll scan status
   const pollStatus = async () => {
     try {

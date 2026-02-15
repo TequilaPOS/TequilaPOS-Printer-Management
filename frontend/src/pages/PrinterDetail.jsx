@@ -41,11 +41,11 @@ export default function PrinterDetail() {
     enabled: !!id,
   })
 
-  // SNMP data
+  // SNMP data - only fetch if SNMP is enabled for this printer
   const { data: snmpData, isLoading: loadingSnmp, refetch: refetchSnmp } = useQuery({
     queryKey: ['printer-snmp', id],
     queryFn: () => printersAPI.getSnmp(id).then(res => res.data),
-    enabled: !!id,
+    enabled: !!id && printer?.snmp_enabled !== false && printer?.snmp_enabled !== 0,
     refetchInterval: 60000, // Every minute
   })
 
@@ -135,7 +135,8 @@ export default function PrinterDetail() {
         </Card>
       </div>
 
-      {/* SNMP Metrics Section */}
+      {/* SNMP Metrics Section - only show if SNMP is enabled */}
+      {printer.snmp_enabled !== false && printer.snmp_enabled !== 0 ? (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
@@ -261,6 +262,17 @@ export default function PrinterDetail() {
           )}
         </CardContent>
       </Card>
+      ) : (
+        <Card>
+          <CardContent className="py-6">
+            <div className="text-center text-muted-foreground">
+              <Activity className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p className="font-medium">SNMP Disabled</p>
+              <p className="text-sm">This printer type does not support SNMP monitoring</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Statistics */}
       <Card>
