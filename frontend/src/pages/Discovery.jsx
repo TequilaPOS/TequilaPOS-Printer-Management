@@ -596,7 +596,7 @@ export default function Discovery() {
 
               <div className="space-y-2">
                 <Label>Printer Type</Label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-4 gap-2">
                   <Button
                     type="button"
                     variant={manualPrinter.printerType === 'auto' ? 'default' : 'outline'}
@@ -605,7 +605,7 @@ export default function Discovery() {
                     className="flex flex-col items-center py-3 h-auto"
                   >
                     <HelpCircle className="h-5 w-5 mb-1" />
-                    <span className="text-xs">Auto-Detect</span>
+                    <span className="text-xs">Auto</span>
                   </Button>
                   <Button
                     type="button"
@@ -615,7 +615,17 @@ export default function Discovery() {
                     className={`flex flex-col items-center py-3 h-auto ${manualPrinter.printerType === 'thermal' ? 'bg-orange-600 hover:bg-orange-700' : 'border-orange-300 text-orange-700 hover:bg-orange-50'}`}
                   >
                     <Receipt className="h-5 w-5 mb-1" />
-                    <span className="text-xs">Thermal/POS</span>
+                    <span className="text-xs">Thermal</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={manualPrinter.printerType === 'impact' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setManualPrinter(prev => ({ ...prev, printerType: 'impact', protocol: 'socket', port: '9100' }))}
+                    className={`flex flex-col items-center py-3 h-auto ${manualPrinter.printerType === 'impact' ? 'bg-purple-600 hover:bg-purple-700' : 'border-purple-300 text-purple-700 hover:bg-purple-50'}`}
+                  >
+                    <Printer className="h-5 w-5 mb-1" />
+                    <span className="text-xs">Impact</span>
                   </Button>
                   <Button
                     type="button"
@@ -630,7 +640,12 @@ export default function Discovery() {
                 </div>
                 {manualPrinter.printerType === 'thermal' && (
                   <p className="text-xs text-orange-600 mt-1">
-                    ⚡ Thermal printers use RAW driver for ESC/POS commands
+                    🔥 Thermal printers (TM-T88, TSP100) - uses RAW/ESC-POS
+                  </p>
+                )}
+                {manualPrinter.printerType === 'impact' && (
+                  <p className="text-xs text-purple-600 mt-1">
+                    🖨️ Impact/Dot Matrix (TM-U220) - uses Epson Impact driver
                   </p>
                 )}
               </div>

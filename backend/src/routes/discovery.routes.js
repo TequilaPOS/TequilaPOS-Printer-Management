@@ -162,9 +162,8 @@ router.post('/recommend-driver', async (req, res, next) => {
             return res.status(400).json({ error: 'Manufacturer or model required' });
         }
 
-        // Use cupsService to find best driver
-        const cupsService = require('../services/cupsService');
-        const driver = await cupsService.findBestDriver(manufacturer, model, protocol);
+        // Use cupsServiceV2 to find best driver
+        const driverInfo = cupsService.getRecommendedDriver(model, manufacturer, model);
         
         // Get driver info
         const { DRIVER_DATABASE, THERMAL_DATABASE } = require('../services/driverDatabase');
@@ -338,8 +337,9 @@ router.post('/add', async (req, res, next) => {
             driver,  // Optional - will auto-detect if not provided
             location = '',
             description = '',
-            forceThermal = false,  // Force thermal printer mode (raw driver)
-            printerType = 'auto'   // 'auto', 'thermal', 'network'
+            manufacturer = '',
+            model = '',
+            printerType = 'auto'   // 'auto', 'thermal', 'impact', 'network'
         } = req.body;
 
         if (!ip || !name) {
@@ -359,28 +359,36 @@ router.post('/add', async (req, res, next) => {
             });
         }
 
-        // Determine if thermal printer
-        const { isThermalPrinter, getThermalPrinterInfo } = require('../services/driverDatabase');
-        const searchText = `${name} ${description}`.toLowerCase();
-        let isThermal = forceThermal || printerType === 'thermal' || isThermalPrinter(searchText);
-        let thermalInfo = getThermalPrinterInfo(searchText);
-        
-        // Determine final driver
+        // Determine final driver based on printerType
         let finalDriver = driver;
+        let isThermal = false;
+        let isImpact = false;
+        
         if (!finalDriver) {
-            if (isThermal) {
-                finalDriver = 'raw';
-            } else {
-                // Auto-detect driver
-                const cupsService = require('../services/cupsService');
-                finalDriver = await cupsService.findBestDriver(null, name, protocol);
+            switch (printerType) {
+                case 'thermal':
+                    finalDriver = 'raw';
+                    isThermal = true;
+                    logger.info(`Discovery: Manual thermal selection → raw`);
+                    break;
+                case 'impact':
+                    // Use Epson impact driver
+                    finalDriver = 'EPSON/tm-impact-receipt-rastertotmir.ppd';
+                    isImpact = true;
+                    logger.info(`Discovery: Manual impact selection → EPSON impact driver`);
+                    break;
+                case 'network':
+                    finalDriver = 'everywhere';
+                    logger.info(`Discovery: Manual network selection → IPP Everywhere`);
+                    break;
+                default:
+                    // Auto-detect using getRecommendedDriver
+                    const driverInfo = cupsService.getRecommendedDriver(name, manufacturer, model || name);
+                    finalDriver = driverInfo.driver;
+                    isThermal = driverInfo.type === 'thermal';
+                    isImpact = driverInfo.type === 'impact';
+                    logger.info(`Discovery: Auto-detect for "${name}" → ${driverInfo.name} (${driverInfo.driver})`);
             }
-        }
-
-        // Force raw for thermal
-        if (isThermal && finalDriver !== 'raw') {
-            logger.info(`Forcing raw driver for thermal printer: ${name}`);
-            finalDriver = 'raw';
         }
 
         // Generate CUPS name
@@ -408,30 +416,33 @@ router.post('/add', async (req, res, next) => {
                 deviceUri = `socket://${ip}:${port}`;
         }
 
-        // Parse manufacturer from name/description
-        let manufacturer = thermalInfo?.brand || null;
-        if (!manufacturer) {
+        // Parse manufacturer from name if not provided
+        let finalManufacturer = manufacturer;
+        if (!finalManufacturer) {
+            const searchText = `${name} ${description}`.toLowerCase();
             const brands = ['hp', 'epson', 'canon', 'brother', 'xerox', 'ricoh', 'lexmark', 'samsung', 'kyocera',
                           'star', 'munbyn', 'snbc', 'citizen', 'bixolon', 'zebra', 'honeywell', 'tsc'];
             for (const brand of brands) {
                 if (searchText.includes(brand)) {
-                    manufacturer = brand.charAt(0).toUpperCase() + brand.slice(1);
+                    finalManufacturer = brand.charAt(0).toUpperCase() + brand.slice(1);
                     break;
                 }
             }
         }
 
-        // Add to CUPS with manufacturer and model info for driver detection
+        // Add to CUPS using cupsServiceV2
         try {
             const cupsResult = await cupsService.addPrinter({
-                cupsName,
+                name: cupsName,
                 ip,
                 port,
                 protocol,
                 location,
                 description,
-                manufacturer: manufacturer || '',
-                model: name
+                driver: finalDriver,
+                manufacturer: finalManufacturer || '',
+                model: model || name,
+                skipDetection: true  // We already determined the driver
             });
             
             if (!cupsResult.success) {
@@ -450,8 +461,8 @@ router.post('/add', async (req, res, next) => {
         }
 
         // Add to database
-        const printerTypeValue = isThermal ? 'thermal' : 'network';
-        const snmpEnabled = isThermal ? 0 : 1; // Enable SNMP by default for network printers
+        const printerTypeValue = isImpact ? 'impact' : (isThermal ? 'thermal' : 'network');
+        const snmpEnabled = (isThermal || isImpact) ? 0 : 1; // Disable SNMP for POS printers
         const result = await db.query(`
             INSERT INTO printers (
                 name, ip_address, port, protocol, printer_type, cups_name, 
@@ -465,8 +476,8 @@ router.post('/add', async (req, res, next) => {
             protocol,
             printerTypeValue,
             cupsName,
-            manufacturer,
-            name, // Use name as model for now
+            finalManufacturer || '',
+            model || name,
             location,
             description,
             snmpEnabled,
