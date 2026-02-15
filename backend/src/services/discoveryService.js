@@ -793,9 +793,23 @@ class DiscoveryService {
             return null;
         }
 
+        // Check if it's a network adapter (UB-E04, C32C8, etc.) - not the actual printer
+        const modelText = (result.info.model || '').toUpperCase();
+        const descText = (result.info.description || '').toUpperCase();
+        const isNetworkAdapter = /UB-[A-Z]\d|C32C8|PRINT SERVER|NETWORK ADAPTER|ETHERNET ADAPTER/i.test(modelText + ' ' + descText);
+        
+        if (isNetworkAdapter) {
+            result.isNetworkAdapter = true;
+            result.requiresManualType = true;
+            result.info.adapterModel = result.info.model;
+            result.info.model = null; // Don't use adapter name as printer model
+            result.recommended.warning = 'Network adapter detected. Please select printer type manually (Impact or Thermal).';
+            logger.info(`Network adapter detected at ${ip}: ${result.info.adapterModel}`);
+        }
+
         // Detect manufacturer from description
-        const descText = result.info.description || result.info.model || '';
-        const manufacturer = this.detectManufacturer(descText);
+        const fullDescText = result.info.description || result.info.model || '';
+        const manufacturer = this.detectManufacturer(fullDescText);
         
         if (manufacturer) {
             result.info.manufacturer = manufacturer.name;

@@ -19,6 +19,7 @@ import {
   Settings,
   Zap,
   AlertCircle,
+  AlertTriangle,
   Receipt,
   Thermometer,
   HelpCircle
@@ -488,6 +489,23 @@ export default function Discovery() {
                               {printer.recommended.note && (
                                 <div className="text-gray-500 italic mt-1">{printer.recommended.note}</div>
                               )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Network adapter warning */}
+                        {printer.isNetworkAdapter && (
+                          <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs">
+                            <div className="flex items-center gap-1 font-medium text-amber-700">
+                              <AlertTriangle className="h-3 w-3" />
+                              Network Adapter Detected ({printer.info?.adapterModel || 'UB-E04'})
+                            </div>
+                            <div className="mt-1 text-amber-600">
+                              Cannot auto-detect printer model. Use <strong>Manual Add</strong> and select:
+                              <ul className="list-disc list-inside mt-1">
+                                <li><strong>Impact</strong> - for TM-U220, SP700 (dot matrix)</li>
+                                <li><strong>Thermal</strong> - for TM-T88, TSP100 (heat paper)</li>
+                              </ul>
                             </div>
                           </div>
                         )}
