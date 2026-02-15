@@ -389,7 +389,7 @@ router.post('/', requireRole(['admin', 'operator']), async (req, res, next) => {
  */
 router.put('/:id', requireRole(['admin', 'operator']), async (req, res, next) => {
     try {
-        const { name, dns_name, location, description, manufacturer, model } = req.body;
+        const { name, dns_name, location, description, manufacturer, model, tags } = req.body;
         
         const printer = await db.queryOne('SELECT * FROM printers WHERE id = ?', [req.params.id]);
         if (!printer) {
@@ -447,6 +447,7 @@ router.put('/:id', requireRole(['admin', 'operator']), async (req, res, next) =>
                 dns_name = COALESCE(?, dns_name),
                 location = COALESCE(?, location),
                 description = COALESCE(?, description),
+                tags = COALESCE(?, tags),
                 manufacturer = COALESCE(?, manufacturer),
                 model = COALESCE(?, model),
                 updated_at = NOW()
@@ -456,7 +457,8 @@ router.put('/:id', requireRole(['admin', 'operator']), async (req, res, next) =>
             newCupsName,
             dns_name || null, 
             location || null, 
-            description || null, 
+            description || null,
+            tags !== undefined ? tags : null,
             manufacturer || null, 
             model || null, 
             req.params.id

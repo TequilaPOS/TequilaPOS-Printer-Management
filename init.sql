@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS printers (
     model VARCHAR(100) NULL,
     location VARCHAR(255) NULL,
     description TEXT NULL,
+    tags VARCHAR(500) NULL COMMENT 'Comma-separated tags for filtering',
     status ENUM('online', 'offline', 'error', 'printing', 'paused', 'unknown') DEFAULT 'unknown',
     is_default BOOLEAN DEFAULT FALSE,
     paper_status ENUM('ok', 'low', 'empty', 'unknown') DEFAULT 'unknown',
