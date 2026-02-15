@@ -30,17 +30,27 @@ class PrinterDetectionService {
             suggestedProtocol: 'socket',
             webInterface: null,
             tonerLevels: null,
-            serialNumber: null
+            serialNumber: null,
+            printerType: null  // 'thermal', 'impact', 'office', etc.
         };
 
         try {
-            // 1. Try HTTP detection (most printers have web interface)
-            const httpInfo = await this.detectViaHTTP(ip);
-            if (httpInfo.detected) {
-                Object.assign(result, httpInfo);
+            // 1. Try SNMP detection first (most reliable for receipt printers)
+            const snmpInfo = await this.detectViaSNMP(ip);
+            if (snmpInfo.detected) {
+                Object.assign(result, snmpInfo);
+                logger.info(`SNMP detected: ${snmpInfo.manufacturer} ${snmpInfo.model}`);
             }
 
-            // 2. Try PJL detection (HP, Brother, etc.)
+            // 2. Try HTTP detection (most printers have web interface)
+            if (!result.detected) {
+                const httpInfo = await this.detectViaHTTP(ip);
+                if (httpInfo.detected) {
+                    Object.assign(result, httpInfo);
+                }
+            }
+
+            // 3. Try PJL detection (HP, Brother, etc.)
             if (!result.detected) {
                 const pjlInfo = await this.detectViaPJL(ip, port);
                 if (pjlInfo.detected) {
@@ -48,7 +58,7 @@ class PrinterDetectionService {
                 }
             }
 
-            // 3. Try IPP detection
+            // 4. Try IPP detection
             const ippInfo = await this.detectViaIPP(ip);
             if (ippInfo.supportsIPP) {
                 result.supportsIPP = true;
@@ -59,22 +69,99 @@ class PrinterDetectionService {
                 }
             }
 
-            // 4. Suggest driver based on detected info
+            // 5. Suggest driver based on detected info
             if (result.model || result.manufacturer) {
                 result.suggestedDriver = await this.suggestDriver(result);
                 result.detected = true;
+                if (result.suggestedDriver && result.suggestedDriver.type) {
+                    result.printerType = result.suggestedDriver.type;
+                }
             }
 
-            // 5. Try to get toner levels via SNMP
-            const snmpInfo = await this.getTonerViaSNMP(ip);
-            if (snmpInfo) {
-                result.tonerLevels = snmpInfo;
+            // 6. Try to get toner levels via SNMP
+            const tonerInfo = await this.getTonerViaSNMP(ip);
+            if (tonerInfo) {
+                result.tonerLevels = tonerInfo;
             }
 
         } catch (error) {
             logger.error(`Error detecting printer at ${ip}:`, error.message);
         }
 
+        return result;
+    }
+
+    /**
+     * Detect printer via SNMP (works great for receipt printers)
+     */
+    async detectViaSNMP(ip) {
+        const result = { detected: false };
+        
+        try {
+            // Standard printer MIB OIDs
+            // 1.3.6.1.2.1.25.3.2.1.3.1 = hrDeviceDescr (Device Description)
+            // 1.3.6.1.2.1.1.1.0 = sysDescr (System Description)
+            // 1.3.6.1.2.1.43.5.1.1.16.1 = prtGeneralSerialNumber
+            // 1.3.6.1.2.1.43.5.1.1.17.1 = prtGeneralPrinterName
+            
+            const snmpResult = await execCommand(
+                `snmpget -v1 -c public -t 2 ${ip} 1.3.6.1.2.1.25.3.2.1.3.1 1.3.6.1.2.1.1.1.0 2>/dev/null`
+            );
+            
+            if (snmpResult.success && snmpResult.stdout) {
+                const output = snmpResult.stdout.toUpperCase();
+                
+                // Parse device description
+                const descMatch = snmpResult.stdout.match(/STRING:\s*"?([^"\n]+)"?/gi);
+                if (descMatch && descMatch.length > 0) {
+                    const fullDesc = descMatch.map(m => m.replace(/STRING:\s*"?/i, '').replace(/"$/, '')).join(' ');
+                    
+                    // Detect manufacturer and model
+                    if (output.includes('EPSON')) {
+                        result.detected = true;
+                        result.manufacturer = 'Epson';
+                        
+                        // Extract model
+                        const modelMatch = fullDesc.match(/TM-[A-Z0-9]+/i) || 
+                                          fullDesc.match(/EPSON\s+([A-Z0-9-]+)/i);
+                        if (modelMatch) {
+                            result.model = modelMatch[0] || modelMatch[1];
+                        }
+                    } else if (output.includes('STAR')) {
+                        result.detected = true;
+                        result.manufacturer = 'Star';
+                        const modelMatch = fullDesc.match(/TSP[0-9]+|SP[0-9]+|mC-Print/i);
+                        if (modelMatch) result.model = modelMatch[0];
+                    } else if (output.includes('SNBC') || output.includes('BTP-')) {
+                        result.detected = true;
+                        result.manufacturer = 'SNBC';
+                        const modelMatch = fullDesc.match(/BTP-[A-Z0-9]+/i);
+                        if (modelMatch) result.model = modelMatch[0];
+                    } else if (output.includes('CITIZEN')) {
+                        result.detected = true;
+                        result.manufacturer = 'Citizen';
+                        const modelMatch = fullDesc.match(/CT-[A-Z0-9]+|CL-[A-Z0-9]+/i);
+                        if (modelMatch) result.model = modelMatch[0];
+                    } else if (output.includes('BIXOLON')) {
+                        result.detected = true;
+                        result.manufacturer = 'Bixolon';
+                    } else if (output.includes('HP') || output.includes('HEWLETT')) {
+                        result.detected = true;
+                        result.manufacturer = 'HP';
+                        const modelMatch = fullDesc.match(/(?:HP|LaserJet|OfficeJet)\s*([A-Z0-9-]+)/i);
+                        if (modelMatch) result.model = modelMatch[1];
+                    } else if (output.includes('BROTHER')) {
+                        result.detected = true;
+                        result.manufacturer = 'Brother';
+                        const modelMatch = fullDesc.match(/(?:Brother|HL|MFC|DCP)-?([A-Z0-9-]+)/i);
+                        if (modelMatch) result.model = modelMatch[1];
+                    }
+                }
+            }
+        } catch (error) {
+            // SNMP not available or failed
+        }
+        
         return result;
     }
 
@@ -297,13 +384,135 @@ class PrinterDetectionService {
      */
     async suggestDriver(printerInfo) {
         const { manufacturer, model, supportsIPP } = printerInfo;
+        const mfgUpper = (manufacturer || '').toUpperCase();
+        const modelUpper = (model || '').toUpperCase();
+        
+        // ==========================================
+        // Receipt Printers (Thermal & Impact)
+        // ==========================================
+        
+        // Epson TM-U series (Impact/Dot Matrix receipt printers)
+        if ((modelUpper.includes('TM-U') || modelUpper.includes('TMU') || 
+             modelUpper.includes('U220') || modelUpper.includes('U230')) &&
+            (mfgUpper.includes('EPSON') || mfgUpper === '')) {
+            return {
+                driver: 'EPSON/tm-impact-receipt-rastertotmir.ppd',
+                name: 'EPSON TM Impact Receipt',
+                protocol: 'socket',
+                type: 'impact'
+            };
+        }
+        
+        // Epson TM-T series (Thermal receipt printers)
+        if ((modelUpper.includes('TM-T') || modelUpper.includes('TMT') ||
+             modelUpper.includes('T88') || modelUpper.includes('T20') ||
+             modelUpper.includes('T82') || modelUpper.includes('T70')) &&
+            (mfgUpper.includes('EPSON') || mfgUpper === '')) {
+            return {
+                driver: 'EPSON/tm-ba-thermal-rastertotmtr-203.ppd',
+                name: 'EPSON TM Thermal (203dpi)',
+                protocol: 'socket',
+                type: 'thermal'
+            };
+        }
+        
+        // Generic Epson receipt printers (thermal by default)
+        if (mfgUpper.includes('EPSON') && 
+            (modelUpper.includes('TM-') || modelUpper.includes('TM ') || modelUpper.startsWith('TM'))) {
+            // Check if it's impact (U series) or thermal (T series)
+            if (modelUpper.includes('U') && !modelUpper.includes('T')) {
+                return {
+                    driver: 'EPSON/tm-impact-receipt-rastertotmir.ppd',
+                    name: 'EPSON TM Impact Receipt',
+                    protocol: 'socket',
+                    type: 'impact'
+                };
+            }
+            return {
+                driver: 'EPSON/tm-ba-thermal-rastertotmtr-203.ppd',
+                name: 'EPSON TM Thermal (203dpi)',
+                protocol: 'socket',
+                type: 'thermal'
+            };
+        }
+        
+        // Star Micronics receipt printers
+        if (mfgUpper.includes('STAR') && 
+            (modelUpper.includes('TSP') || modelUpper.includes('SP700') || 
+             modelUpper.includes('MC-PRINT') || modelUpper.includes('MPOP'))) {
+            return {
+                driver: 'raw',
+                name: 'Star Receipt (RAW/ESC-POS)',
+                protocol: 'socket',
+                type: 'thermal'
+            };
+        }
+        
+        // SNBC (BTP series) thermal printers
+        if (mfgUpper.includes('SNBC') || modelUpper.includes('BTP-')) {
+            return {
+                driver: 'raw',
+                name: 'SNBC Thermal (RAW/ESC-POS)',
+                protocol: 'socket',
+                type: 'thermal'
+            };
+        }
+        
+        // Bixolon receipt printers
+        if (mfgUpper.includes('BIXOLON') || mfgUpper.includes('SAMSUNG')) {
+            return {
+                driver: 'raw',
+                name: 'Bixolon Thermal (RAW/ESC-POS)',
+                protocol: 'socket',
+                type: 'thermal'
+            };
+        }
+        
+        // Citizen receipt printers
+        if (mfgUpper.includes('CITIZEN') && 
+            (modelUpper.includes('CT-') || modelUpper.includes('CL-'))) {
+            return {
+                driver: 'raw',
+                name: 'Citizen Thermal (RAW/ESC-POS)',
+                protocol: 'socket',
+                type: 'thermal'
+            };
+        }
+        
+        // Sewoo/Lukhan receipt printers
+        if (mfgUpper.includes('SEWOO') || mfgUpper.includes('LUKHAN') ||
+            modelUpper.includes('SLK-') || modelUpper.includes('LK-')) {
+            return {
+                driver: 'raw',
+                name: 'Sewoo Thermal (RAW/ESC-POS)',
+                protocol: 'socket',
+                type: 'thermal'
+            };
+        }
+        
+        // Generic receipt/thermal/POS printers
+        if (modelUpper.includes('THERMAL') || modelUpper.includes('RECEIPT') ||
+            modelUpper.includes('POS') || modelUpper.includes('58MM') ||
+            modelUpper.includes('80MM')) {
+            return {
+                driver: 'raw',
+                name: 'Generic Thermal Receipt (RAW/ESC-POS)',
+                protocol: 'socket',
+                type: 'thermal'
+            };
+        }
+        
+        // ==========================================
+        // Office/Laser Printers
+        // ==========================================
         
         // If IPP is supported, use driverless
         if (supportsIPP) {
             return {
                 driver: 'everywhere',
                 name: 'IPP Everywhere (Driverless)',
-                protocol: 'ipp'
+                protocol: 'ipp',
+                type: 'office'
             };
         }
         
@@ -343,7 +552,8 @@ class PrinterDetectionService {
                 suggestions.push({
                     driver: driverPath,
                     name: nameParts.join(' ') || driverPath,
-                    score
+                    score,
+                    type: 'office'
                 });
             }
         }
@@ -357,12 +567,12 @@ class PrinterDetectionService {
         
         // Fallback drivers by manufacturer
         const fallbacks = {
-            'HP': { driver: 'lsb/usr/cupsfilters/pxlmono.ppd', name: 'HP LaserJet Series PCL 6', protocol: 'socket' },
-            'Brother': { driver: 'lsb/usr/cupsfilters/pxlmono.ppd', name: 'Generic PCL 6', protocol: 'socket' },
-            'Canon': { driver: 'lsb/usr/cupsfilters/pxlmono.ppd', name: 'Generic PCL 6', protocol: 'socket' },
-            'Epson': { driver: 'drv:///sample.drv/epson9.ppd', name: 'Epson Series', protocol: 'socket' },
-            'Xerox': { driver: 'drv:///sample.drv/generic.ppd', name: 'Generic PostScript', protocol: 'socket' },
-            'default': { driver: 'drv:///sample.drv/generpcl.ppd', name: 'Generic PCL Laser Printer', protocol: 'socket' }
+            'HP': { driver: 'lsb/usr/cupsfilters/pxlmono.ppd', name: 'HP LaserJet Series PCL 6', protocol: 'socket', type: 'office' },
+            'Brother': { driver: 'lsb/usr/cupsfilters/pxlmono.ppd', name: 'Generic PCL 6', protocol: 'socket', type: 'office' },
+            'Canon': { driver: 'lsb/usr/cupsfilters/pxlmono.ppd', name: 'Generic PCL 6', protocol: 'socket', type: 'office' },
+            'Epson': { driver: 'raw', name: 'Epson Generic (RAW)', protocol: 'socket', type: 'thermal' },
+            'Xerox': { driver: 'drv:///sample.drv/generic.ppd', name: 'Generic PostScript', protocol: 'socket', type: 'office' },
+            'default': { driver: 'raw', name: 'Generic RAW', protocol: 'socket', type: 'generic' }
         };
         
         return fallbacks[manufacturer] || fallbacks['default'];
