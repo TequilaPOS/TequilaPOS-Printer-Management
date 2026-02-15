@@ -34,6 +34,8 @@ export default function Discovery() {
   const [scanResults, setScanResults] = useState([])
   const [selectedPrinters, setSelectedPrinters] = useState(new Set())
   const [showManualAdd, setShowManualAdd] = useState(false)
+  const [showTypeModal, setShowTypeModal] = useState(false)
+  const [pendingPrinter, setPendingPrinter] = useState(null)
   const [manualPrinter, setManualPrinter] = useState({
     ip: '',
     name: '',
@@ -146,19 +148,35 @@ export default function Discovery() {
   }
 
   // Add single printer
-  const addPrinter = async (printer, forceThermal = false) => {
+  const addPrinter = async (printer, forceThermal = false, forceImpact = false) => {
+    // If requires manual type and not forced, show modal
+    if ((printer.requiresManualType || printer.isNetworkAdapter) && !forceThermal && !forceImpact) {
+      setPendingPrinter(printer)
+      setShowTypeModal(true)
+      return
+    }
+
     try {
-      const isThermal = forceThermal || printer.isThermal || printer.printerType === 'thermal'
+      let printerType = 'auto'
+      let driver = printer.recommended?.driver || 'raw'
+      
+      if (forceImpact) {
+        printerType = 'impact'
+        driver = 'EPSON/tm-impact-receipt-rastertotmir.ppd'
+      } else if (forceThermal || printer.isThermal || printer.printerType === 'thermal') {
+        printerType = 'thermal'
+        driver = 'raw'
+      }
       
       await api.post('/discovery/add', {
         ip: printer.ip,
         name: printer.recommended?.name || `Printer_${printer.ip}`,
         protocol: printer.recommended?.protocol || 'socket',
         port: printer.recommended?.port || 9100,
-        driver: isThermal ? 'raw' : (printer.recommended?.driver || 'raw'),
+        driver: driver,
         description: printer.info?.model || '',
-        forceThermal: isThermal,
-        printerType: isThermal ? 'thermal' : 'auto'
+        manufacturer: printer.info?.manufacturer || '',
+        printerType: printerType
       })
 
       toast.success(`Added ${printer.info?.model || printer.ip}`)
@@ -170,6 +188,19 @@ export default function Discovery() {
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to add printer')
     }
+  }
+
+  // Handle type selection from modal
+  const handleTypeSelection = (type) => {
+    if (pendingPrinter) {
+      if (type === 'impact') {
+        addPrinter(pendingPrinter, false, true)
+      } else {
+        addPrinter(pendingPrinter, true, false)
+      }
+    }
+    setShowTypeModal(false)
+    setPendingPrinter(null)
   }
 
   // Add printer manually
@@ -721,6 +752,66 @@ export default function Discovery() {
                 <Button onClick={addManualPrinter}>
                   <Plus className="h-4 w-4 mr-2" />
                   Add Printer
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Printer Type Selection Modal */}
+      {showTypeModal && pendingPrinter && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-md mx-4">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-amber-500" />
+                Select Printer Type
+              </CardTitle>
+              <CardDescription>
+                Network adapter detected at {pendingPrinter.ip}
+                {pendingPrinter.info?.adapterModel && ` (${pendingPrinter.info.adapterModel})`}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Cannot auto-detect the printer model. Please select the correct type:
+              </p>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <Button
+                  variant="outline"
+                  className="h-24 flex flex-col items-center justify-center gap-2 border-2 hover:border-purple-500 hover:bg-purple-50"
+                  onClick={() => handleTypeSelection('impact')}
+                >
+                  <Printer className="h-8 w-8 text-purple-600" />
+                  <div className="text-center">
+                    <div className="font-semibold">Impact</div>
+                    <div className="text-xs text-muted-foreground">TM-U220, SP700</div>
+                    <div className="text-xs text-muted-foreground">(dot matrix)</div>
+                  </div>
+                </Button>
+                
+                <Button
+                  variant="outline"
+                  className="h-24 flex flex-col items-center justify-center gap-2 border-2 hover:border-orange-500 hover:bg-orange-50"
+                  onClick={() => handleTypeSelection('thermal')}
+                >
+                  <Receipt className="h-8 w-8 text-orange-600" />
+                  <div className="text-center">
+                    <div className="font-semibold">Thermal</div>
+                    <div className="text-xs text-muted-foreground">TM-T88, TSP100</div>
+                    <div className="text-xs text-muted-foreground">(heat paper)</div>
+                  </div>
+                </Button>
+              </div>
+              
+              <div className="flex justify-center pt-2">
+                <Button 
+                  variant="ghost" 
+                  onClick={() => { setShowTypeModal(false); setPendingPrinter(null); }}
+                >
+                  Cancel
                 </Button>
               </div>
             </CardContent>
