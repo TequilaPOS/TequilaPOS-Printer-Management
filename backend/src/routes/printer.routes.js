@@ -255,6 +255,7 @@ router.post('/', requireRole(['admin', 'operator']), async (req, res, next) => {
             manufacturer,
             model,
             driver,  // Optional: specific driver to use
+            printerType = 'auto',  // 'auto', 'thermal', 'impact', 'network'
             skipDetection = true  // Skip slow auto-detection by default
         } = req.body;
         
@@ -285,6 +286,30 @@ router.post('/', requireRole(['admin', 'operator']), async (req, res, next) => {
             });
         }
         
+        // Determine driver based on printerType selection
+        let selectedDriver = driver;
+        if (!selectedDriver && printerType !== 'auto') {
+            switch (printerType) {
+                case 'thermal':
+                    selectedDriver = 'raw';  // ESC/POS compatible
+                    break;
+                case 'impact':
+                    // Use Epson impact driver if manufacturer is Epson
+                    if ((manufacturer || '').toLowerCase().includes('epson') || 
+                        (name || '').toLowerCase().includes('epson') ||
+                        (model || '').toLowerCase().includes('tm-u')) {
+                        selectedDriver = 'EPSON/tm-impact-receipt-rastertotmir.ppd';
+                    } else {
+                        selectedDriver = 'raw';  // Generic impact
+                    }
+                    break;
+                case 'network':
+                    selectedDriver = 'everywhere';  // IPP Everywhere
+                    break;
+            }
+            logger.info(`Manual printerType selection: ${printerType} → driver: ${selectedDriver}`);
+        }
+        
         // Add to CUPS (skip slow detection by default)
         const cupsResult = await cupsService.addPrinter({
             name,
@@ -293,10 +318,10 @@ router.post('/', requireRole(['admin', 'operator']), async (req, res, next) => {
             protocol,
             location,
             description: description || `${manufacturer || ''} ${model || ''}`.trim(),
-            driver,
+            driver: selectedDriver,
             manufacturer,  // Pass manufacturer for driver detection
             model,         // Pass model for driver detection
-            skipDetection: skipDetection !== false  // Skip unless explicitly set to false
+            skipDetection: selectedDriver ? true : (skipDetection !== false)  // Skip if we already have driver
         });
         
         if (!cupsResult.success) {
