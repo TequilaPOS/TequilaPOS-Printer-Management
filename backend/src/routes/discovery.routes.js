@@ -542,7 +542,22 @@ router.post('/add-all', async (req, res, next) => {
                 const name = printer.recommended?.name || `Printer_${printer.ip.replace(/\./g, '_')}`;
                 const protocol = printer.recommended?.protocol || 'socket';
                 const port = printer.recommended?.port || 9100;
-                const driver = printer.recommended?.driver || 'raw';
+                
+                // Determine driver based on printer type
+                let finalDriver = printer.recommended?.driver || 'raw';
+                const isThermal = printer.isThermal || printer.printerType === 'thermal';
+                const isImpact = printer.printerType === 'impact';
+                
+                if (!printer.recommended?.driver) {
+                    // Auto-detect driver using getRecommendedDriver
+                    const driverInfo = cupsService.getRecommendedDriver(
+                        name, 
+                        printer.info?.manufacturer || '', 
+                        printer.info?.model || name
+                    );
+                    finalDriver = driverInfo.driver;
+                    logger.info(`Add-all: Auto-detect for "${name}" → ${driverInfo.name} (${finalDriver})`);
+                }
 
                 // Include IP suffix to make CUPS name unique
                 const ipSuffix = printer.ip.split('.').slice(-1)[0]; // Last octet
@@ -552,15 +567,17 @@ router.post('/add-all', async (req, res, next) => {
                     .substring(0, 40);
                 const cupsName = `${baseCupsName}_${ipSuffix}`;
 
-                // Add to CUPS with manufacturer and model for driver detection
+                // Add to CUPS using cupsServiceV2
                 const cupsResult = await cupsService.addPrinter({
-                    cupsName,
+                    name: cupsName,
                     ip: printer.ip,
                     port,
                     protocol,
                     description: printer.info?.model || '',
                     manufacturer: printer.info?.manufacturer || '',
-                    model: printer.info?.model || name
+                    model: printer.info?.model || name,
+                    driver: finalDriver,
+                    skipDetection: true  // We already determined the driver
                 });
                 
                 if (!cupsResult.success) {
