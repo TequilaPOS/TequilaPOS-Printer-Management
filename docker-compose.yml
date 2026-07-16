@@ -13,7 +13,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       TZ: ${TZ:-America/Chicago}
     volumes:
-      - mysql_data:/var/lib/mysql
+      - ./mysql_data:/var/lib/mysql
       # - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
       - "3307:3306"
@@ -68,8 +68,7 @@ services:
       - cups_spool:/var/spool/cups
     ports:
       - "3000:3000"
-      # Port 631 not needed when using host CUPS
-      # - "631:631"
+      - "631:631"
     networks:
       - printer-network
     # Para acceder a redes externas (VPN) en macOS Docker Desktop
