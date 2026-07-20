@@ -8,7 +8,7 @@ const logger = require('./logger');
 
 // Check if CUPS socket exists (for Docker with mounted socket)
 const CUPS_SOCKET = '/var/run/cups/cups.sock';
-const USE_CUPS_SOCKET = fs.existsSync(CUPS_SOCKET);
+const USE_CUPS_SOCKET = false;
 
 // Default environment with CUPS_SERVER for all commands
 const CUPS_ENV = {
