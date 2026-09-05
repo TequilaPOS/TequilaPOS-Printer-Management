@@ -9,6 +9,14 @@ echo "============================================"
 echo "🖨️  Printer Management System Starting..."
 echo "============================================"
 
+# Defensive cleanup: if a host bind-mount created cups.sock as a directory
+# (happens when the host path doesn't exist/isn't a real socket), CUPS
+# can never bind there. Detect and remove this specific broken case.
+if [ -d /var/run/cups/cups.sock ]; then
+    echo "⚠️  /var/run/cups/cups.sock exists as a directory (broken host mount) - removing"
+    rmdir /var/run/cups/cups.sock 2>/dev/null || rm -rf /var/run/cups/cups.sock
+fi
+
 # Check if host CUPS socket is mounted
 if [ -S /var/run/cups/cups.sock ]; then
     echo "✅ Host CUPS socket detected - using host CUPS server"
