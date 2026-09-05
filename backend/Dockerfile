@@ -72,7 +72,7 @@ RUN mkdir -p /etc/cups && \
     echo 'Listen *:631' >> /etc/cups/cupsd.conf && \
     echo 'Listen /run/cups/cups.sock' >> /etc/cups/cupsd.conf && \
     echo 'Browsing On' >> /etc/cups/cupsd.conf && \
-    echo 'BrowseLocalProtocols dnssd' >> /etc/cups/cupsd.conf && \
+    echo 'BrowseLocalProtocols none' >> /etc/cups/cupsd.conf && \
     echo 'DefaultAuthType Basic' >> /etc/cups/cupsd.conf && \
     echo 'WebInterface Yes' >> /etc/cups/cupsd.conf && \
     echo 'ServerAlias *' >> /etc/cups/cupsd.conf && \
